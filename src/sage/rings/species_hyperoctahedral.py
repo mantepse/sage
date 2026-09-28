@@ -86,8 +86,10 @@ AUTHORS:
 # ****************************************************************************
 
 from sage.arith.misc import divisors
+from sage.categories.graded_algebras_with_basis import GradedAlgebrasWithBasis
 from sage.categories.monoids import Monoids
 from sage.categories.sets_with_grading import SetsWithGrading
+from sage.combinat.free_module import CombinatorialFreeModule
 from sage.groups.perm_gps.constructor import PermutationGroupElement
 from sage.groups.perm_gps.hyperoctahedral_group import (
     _wreath_group,
@@ -898,3 +900,319 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                 False
             """
             return len(self._monomial) == 1 and next(iter(self._monomial.values())) == 1
+
+
+class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
+    r"""
+    The ring of polynomial `r`-species.
+
+    This is the commutative graded algebra over ``base_ring`` whose
+    basis is given by the molecular `r`-species, exactly as
+    :class:`~sage.rings.species.PolynomialSpecies` is the graded algebra
+    whose basis is given by the molecular species.
+
+    INPUT:
+
+    - ``base_ring`` -- a ring
+    - ``r`` -- positive integer; the order of the cyclic group
+
+    EXAMPLES::
+
+        sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+        sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+        sage: P
+        Polynomial 2-species over Rational Field
+        sage: W = _wreath_group(2, 1)
+        sage: P(W.subgroup([])) * P(W)
+        X*X°
+
+    The product is associative, commutative and distributive::
+
+        sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+        sage: W1 = _wreath_group(2, 1)
+        sage: W2 = _wreath_group(2, 2)
+        sage: a = P(W1)
+        sage: b = P(W2.subgroup([]))
+        sage: c = P(W2.subgroup([[(1, 3), (2, 4)]]))
+        sage: a * b == b * a
+        True
+        sage: (a * b) * c == a * (b * c)
+        True
+        sage: a * (b + c) == a * b + a * c
+        True
+        sage: (a * b).degree()
+        3
+
+    TESTS::
+
+        sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+        sage: PolynomialHyperoctahedralSpecies(QQ, 2) is PolynomialHyperoctahedralSpecies(QQ, ZZ(2))
+        True
+        sage: PolynomialHyperoctahedralSpecies(QQ, 0)
+        Traceback (most recent call last):
+        ...
+        ValueError: r must be a positive integer
+    """
+    @staticmethod
+    def __classcall__(cls, base_ring, r):
+        r"""
+        Normalize the arguments for unique representation.
+
+        TESTS::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: PolynomialHyperoctahedralSpecies(QQ, 2) is PolynomialHyperoctahedralSpecies(QQ, 2)
+            True
+        """
+        r = ZZ(r)
+        if r < 1:
+            raise ValueError("r must be a positive integer")
+        return super().__classcall__(cls, base_ring, r)
+
+    def __init__(self, base_ring, r):
+        r"""
+        Initialize the ring of polynomial `r`-species.
+
+        TESTS::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: P = PolynomialHyperoctahedralSpecies(ZZ, 2)
+            sage: TestSuite(P).run()
+        """
+        self._r = ZZ(r)
+        category = GradedAlgebrasWithBasis(base_ring).Commutative()
+        CombinatorialFreeModule.__init__(self, base_ring,
+                                         basis_keys=MolecularHyperoctahedralSpecies(self._r),
+                                         category=category,
+                                         prefix='', bracket=False)
+
+    def _repr_(self):
+        r"""
+        Return a string representation of ``self``.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: PolynomialHyperoctahedralSpecies(ZZ, 3)
+            Polynomial 3-species over Integer Ring
+        """
+        return f"Polynomial {self._r}-species over {self.base_ring()}"
+
+    def _element_constructor_(self, G, check=True):
+        r"""
+        Construct the polynomial `r`-species given by ``G``.
+
+        INPUT:
+
+        - ``G`` -- one of the following:
+
+          - an element of ``self``
+          - an atomic or molecular `r`-species
+          - a permutation group which is a subgroup of `W(r,n)` on the
+            standard domain
+          - a dictionary from molecular `r`-species to elements of the
+            base ring
+
+        - ``check`` -- boolean (default: ``True``); skip input checking
+          if ``False``
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import (
+            ....:     PolynomialHyperoctahedralSpecies, MolecularHyperoctahedralSpecies)
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+            sage: M = MolecularHyperoctahedralSpecies(2)
+            sage: W = _wreath_group(2, 2)
+            sage: P(M(W.subgroup([])))
+            X^2
+            sage: P(W.subgroup([(1, 2), (3, 4)]))
+            X°^2
+
+        A subgroup which is not directly indecomposable is decomposed
+        into molecular factors::
+
+            sage: P(W.subgroup([(1, 2)]))
+            X°*X
+
+        TESTS::
+
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+            sage: f = P.one()
+            sage: P(f) is f
+            True
+        """
+        if parent(G) is self:
+            raise ValueError("cannot reassign data to a polynomial species")
+
+        if isinstance(G, AtomicHyperoctahedralSpecies.Element):
+            G = self._indices({G: ZZ.one()})
+
+        if isinstance(G, MolecularHyperoctahedralSpecies.Element):
+            if check and G.parent() is not self._indices:
+                raise ValueError(f"{G} must be a {self._indices}")
+            return self._from_dict({G: self.base_ring().one()})
+
+        if isinstance(G, dict):
+            if check:
+                if not all(M.parent() is self._indices for M in G):
+                    raise ValueError(f"all keys of the dict {G} must be {self._indices}")
+                if not all(e in self.base_ring() for e in G.values()):
+                    raise ValueError(f"all values of the dict {G} must be in {self.base_ring()}")
+            return self._from_dict(G)
+
+        if isinstance(G, PermutationGroup_generic):
+            M = self._indices(G)
+            return self._from_dict({M: ZZ.one()})
+
+        raise ValueError(f"{G} must be an element of the base ring, a permutation "
+                         "group or a molecular species")
+
+    def change_ring(self, R):
+        r"""
+        Return the base change of ``self`` to `R`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: P = PolynomialHyperoctahedralSpecies(ZZ, 2)
+            sage: P.change_ring(QQ)
+            Polynomial 2-species over Rational Field
+            sage: P.change_ring(ZZ) is P
+            True
+        """
+        if R is self.base_ring():
+            return self
+        return PolynomialHyperoctahedralSpecies(R, self._r)
+
+    def degree_on_basis(self, m):
+        r"""
+        Return the degree of the molecular `r`-species ``m``.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+            sage: P.degree_on_basis(P(_wreath_group(2, 3)).support()[0])
+            3
+        """
+        return m.degree()
+
+    @cached_method
+    def one_basis(self):
+        r"""
+        Return the index of the multiplicative unit.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: PolynomialHyperoctahedralSpecies(QQ, 2).one_basis()
+            1
+        """
+        return self._indices.one()
+
+    def product_on_basis(self, H, K):
+        r"""
+        Return the product of the basis elements indexed by ``H`` and ``K``.
+
+        The product of two molecular `r`-species is their direct product
+        with disjoint supports, which is the product in the free
+        commutative monoid of molecular `r`-species.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+            sage: M = P._indices
+            sage: H = M(_wreath_group(2, 1).subgroup([]))
+            sage: K = M(_wreath_group(2, 1))
+            sage: P.product_on_basis(H, K)
+            X*X°
+        """
+        return self.element_class(self, {H * K: ZZ.one()})
+
+    class Element(CombinatorialFreeModule.Element):
+        r"""
+        A (virtual) polynomial `r`-species.
+        """
+        def is_constant(self):
+            r"""
+            Return whether ``self`` is a constant polynomial `r`-species.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: X = P(_wreath_group(2, 1).subgroup([]))
+                sage: X.is_constant()
+                False
+                sage: (3*P.one()).is_constant()
+                True
+                sage: P(0).is_constant()
+                True
+                sage: (1 + X).is_constant()
+                False
+            """
+            return self.is_zero() or not self.maximal_degree()
+
+        def is_virtual(self):
+            r"""
+            Return whether ``self`` is a virtual polynomial `r`-species.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: X = P(_wreath_group(2, 1).subgroup([]))
+                sage: Y = P(_wreath_group(2, 1))
+                sage: V = 2*X - 3*Y
+                sage: V.is_virtual()
+                True
+                sage: (X*Y).is_virtual()
+                False
+            """
+            return any(c < 0 for c in self.coefficients(sort=False))
+
+        def is_molecular(self):
+            r"""
+            Return whether ``self`` is a molecular `r`-species.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: X = P(_wreath_group(2, 1).subgroup([]))
+                sage: Y = P(_wreath_group(2, 1))
+                sage: (2*X).is_molecular()
+                False
+                sage: (X*Y).is_molecular()
+                True
+            """
+            coefficients = self.coefficients(sort=False)
+            return len(coefficients) == 1 and coefficients[0] == 1
+
+        def is_atomic(self):
+            r"""
+            Return whether ``self`` is an atomic `r`-species.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: X = P(_wreath_group(2, 1).subgroup([]))
+                sage: Y = P(_wreath_group(2, 1))
+                sage: (2*Y).is_atomic()
+                False
+                sage: (X*Y).is_atomic()
+                False
+                sage: Y.is_atomic()
+                True
+            """
+            return self.is_molecular() and self.support()[0].is_atomic()
