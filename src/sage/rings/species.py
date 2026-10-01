@@ -2724,6 +2724,9 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
             5
         """
         P = self.parent()
+        from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+        if any(isinstance(arg, PolynomialHyperoctahedralSpecies.Element) for arg in args):
+            return self._compose_type1(args)
         if len(args) != P._arity:
             raise ValueError("number of args must match arity of self")
         if len(set(arg.parent() for arg in args)) > 1:
@@ -2787,6 +2790,88 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
                                                          degrees)
                 FG = [(M(*molecules), c) for M, c in FX]
                 result += P0.sum_of_terms(FG)
+        return result
+
+    def _compose_type1(self, args):
+        r"""
+        Return the first Henderson substitution `F \circ G`.
+
+        Here ``self`` is an ordinary polynomial species and the entries
+        of ``args`` are polynomial `r`-species, cf. [Henderson2004]_,
+        (4.6).  The ordinary coloured expansion is performed by
+        :meth:`_compose_with_weighted_singletons`; only the final
+        replacement of the abstract colours by the actual molecular
+        `r`-species is new.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species import PolynomialSpecies
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: P = PolynomialSpecies(QQ, ["X"])
+            sage: H = PolynomialHyperoctahedralSpecies(QQ, 2)
+            sage: X = H(_wreath_group(2, 1).subgroup([]))
+            sage: Xo = H(_wreath_group(2, 1))
+            sage: E2 = P(SymmetricGroup(2))
+            sage: E3 = P(SymmetricGroup(3))
+            sage: E2(X)
+            {((1,3)(2,4),)}
+            sage: E2(X + Xo)
+            {((1,3)(2,4),)} + X*X° + {((1,2), (3,4), (1,3)(2,4))}
+            sage: E2(X + 2*Xo)
+            {((1,3)(2,4),)} + 2*X*X° + 2*{((1,2), (3,4), (1,3)(2,4))} + X°^2
+            sage: E2(2*X)
+            2*{((1,3)(2,4),)} + X^2
+            sage: E2(2*Xo)
+            2*{((1,2), (3,4), (1,3)(2,4))} + X°^2
+
+        `E_2(X^\circ)` is the full wreath product `W(2,2)`::
+
+            sage: E2(X).support()[0].permutation_group().order()
+            2
+            sage: E2(Xo).support()[0].permutation_group().order()
+            8
+
+        The substitution is linear in the outer species and associative
+        whenever only Type 1 is involved::
+
+            sage: (E2 + E3)(X + Xo) == E2(X + Xo) + E3(X + Xo)
+            True
+            sage: (E2(E3))(X + Xo) == E2(E3(X + Xo))
+            True
+
+        For `r = 1` this reduces to the ordinary composition::
+
+            sage: H1 = PolynomialHyperoctahedralSpecies(QQ, 1)
+            sage: X1 = H1(_wreath_group(1, 1).subgroup([]))
+            sage: E2(X1).support()[0].permutation_group().order()
+            2
+        """
+        from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+        P = self.parent()
+        if len(args) != P._arity:
+            raise ValueError("number of args must match arity of self")
+        if not all(isinstance(arg, PolynomialHyperoctahedralSpecies.Element) for arg in args):
+            raise ValueError("all args must be polynomial r-species")
+        if len(set(arg.parent() for arg in args)) > 1:
+            raise ValueError("all args must have the same parent")
+
+        H = args[0].parent()
+        molecules = H._indices
+        arg_terms = [sorted(g, key=lambda x: x[0].grade()) for g in args]
+        multiplicities = list(chain.from_iterable([[c for _, c in g] for g in arg_terms]))
+        substituted = list(chain.from_iterable([[M for M, _ in g] for g in arg_terms]))
+        F_degrees = sorted(set(M.grade() for M, _ in self))
+        names = ["X%s" % i for i in range(len(substituted))]
+
+        result = H.zero()
+        for mc in F_degrees:
+            F = P.sum_of_terms((M, c) for M, c in self if M.grade() == mc)
+            for degrees in cartesian_product([IntegerVectors(d, length=len(arg))
+                                              for d, arg in zip(mc, arg_terms)]):
+                FX = F._compose_with_weighted_singletons(names, multiplicities, degrees)
+                for M, c in FX:
+                    result += c * H.monomial(molecules._type1_substitute_molecular(M, substituted))
         return result
 
     def factor(self):

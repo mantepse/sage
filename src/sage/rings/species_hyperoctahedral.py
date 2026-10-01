@@ -837,6 +837,101 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         """
         return Set([self(rep) for rep in _wreath_subgroup_classes(self._r, n)])
 
+    def _type1_substitute_molecular(self, M, molecules):
+        r"""
+        Substitute `r`-molecular species into an ordinary molecular species.
+
+        This is the final, group-theoretic step of the first Henderson
+        substitution: the ordinary molecular species ``M`` is an
+        abstract coloured species whose sorts correspond to the
+        entries of ``molecules``, and every ordinary point is
+        replaced by the corresponding substituted `r`-molecule.
+
+        INPUT:
+
+        - ``M`` -- a molecular species of an ordinary
+          :class:`~sage.rings.species.PolynomialSpecies`;
+          its ``permutation_group()`` supplies the ordinary group
+          `H` and the partition of its points into sorts
+        - ``molecules`` -- a list of molecular `r`-species, one for
+          each sort of ``M``
+
+        OUTPUT:
+
+        An element of ``self``.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species import PolynomialSpecies
+            sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: P = PolynomialSpecies(QQ, "A, B")
+            sage: M = MolecularHyperoctahedralSpecies(2)
+            sage: X = M(_wreath_group(2, 1).subgroup([]))
+            sage: Xo = M(_wreath_group(2, 1))
+            sage: G = PermutationGroup([(1, 2)], domain=[1, 2, 3])
+            sage: E2AB = P(G, {0: [1, 2], 1: [3]}).support()[0]
+            sage: M._type1_substitute_molecular(E2AB, [Xo, X])
+            X*{((1,2), (3,4), (1,3)(2,4))}
+
+        TESTS:
+
+        The group of `E_2(X^\circ)` is the full wreath product::
+
+            sage: P = PolynomialSpecies(QQ, "X")
+            sage: M = MolecularHyperoctahedralSpecies(2)
+            sage: Xo = M(_wreath_group(2, 1))
+            sage: E2 = P(SymmetricGroup(2)).support()[0]
+            sage: G = M._type1_substitute_molecular(E2, [Xo]).permutation_group()
+            sage: G.order()
+            8
+        """
+        r = self._r
+        H, dompart = M.permutation_group()
+        n = H.degree()
+
+        # the sort of each ordinary point
+        sort_of = {}
+        for i, block in enumerate(dompart):
+            for j in block:
+                sort_of[j] = i
+
+        # sizes (in C_r-blocks) and offsets of the chunks
+        sizes = {}
+        offsets = {}
+        offset = 0
+        for j in range(1, n + 1):
+            sizes[j] = molecules[sort_of[j]].degree()
+            offsets[j] = offset
+            offset += sizes[j]
+        N = offset
+
+        gens = []
+        # Lift the generators of the ordinary outer group to the chunks.
+        for h in H.gens():
+            perm = list(range(1, N * r + 1))
+            for j in range(1, n + 1):
+                jp = h(j)
+                for p in range(sizes[j] * r):
+                    perm[offsets[j] * r + p] = offsets[jp] * r + p + 1
+            gens.append(PermutationGroupElement(perm))
+
+        # Embed the generators of each substituted molecule into
+        # every occurrence of its sort.
+        for i, block in enumerate(dompart):
+            K = molecules[i].permutation_group()
+            for j in block:
+                shift = offsets[j] * r
+                for gen in K.gens():
+                    cycles = [tuple(shift + p for p in cyc)
+                              for cyc in gen.cycle_tuples()]
+                    cycles = [cyc for cyc in cycles if cyc]
+                    if cycles:
+                        gens.append(PermutationGroupElement(cycles))
+
+        W = PermutationGroup(gens, domain=range(1, N * r + 1))
+        return self(W)
+
     class Element(IndexedFreeAbelianMonoidElement):
         r"""
         A molecular `r`-species.
@@ -901,6 +996,40 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             """
             return len(self._monomial) == 1 and next(iter(self._monomial.values())) == 1
 
+        @cached_method
+        def permutation_group(self):
+            r"""
+            Return a permutation group representing ``self``.
+
+            The result acts on the standard domain `\{1, \ldots, rn\}`
+            and is the direct product of the permutation groups of the
+            atomic factors of ``self``.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: M = MolecularHyperoctahedralSpecies(2)
+                sage: M(_wreath_group(2, 2).subgroup([(1, 2), (3, 4)])).permutation_group()
+                Permutation Group with generators [(3,4), (1,2)]
+                sage: M.one().permutation_group()
+                Permutation Group with generators [()]
+            """
+            r = self.parent()._r
+            gens = []
+            offset = 0
+            for A, e in self._monomial.items():
+                H = A.permutation_group()
+                d = H.degree()
+                for _ in range(e):
+                    for gen in H.gens():
+                        cycles = [tuple(offset + p for p in cyc)
+                                  for cyc in gen.cycle_tuples()]
+                        cycles = [cyc for cyc in cycles if cyc]
+                        if cycles:
+                            gens.append(PermutationGroupElement(cycles))
+                    offset += d
+            return PermutationGroup(gens, domain=range(1, offset + 1))
 
 class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
     r"""
