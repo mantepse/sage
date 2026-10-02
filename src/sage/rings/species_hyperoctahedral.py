@@ -85,6 +85,8 @@ AUTHORS:
 #                  https://www.gnu.org/licenses/
 # ****************************************************************************
 
+from itertools import chain
+
 from sage.arith.misc import divisors
 from sage.categories.graded_algebras_with_basis import GradedAlgebrasWithBasis
 from sage.categories.monoids import Monoids
@@ -93,6 +95,7 @@ from sage.combinat.free_module import CombinatorialFreeModule
 from sage.groups.perm_gps.constructor import PermutationGroupElement
 from sage.groups.perm_gps.hyperoctahedral_group import (
     _wreath_group,
+    _wreath_group_on_domain,
     _hyperoctahedral_disjoint_direct_product_decomposition,
 )
 from sage.groups.perm_gps.permgroup import PermutationGroup, PermutationGroup_generic
@@ -270,6 +273,60 @@ def _standardize_component(H, comp, r):
             perm[relabel[p] - 1] = relabel[g(p)]
         new_gens.append(PermutationGroupElement(perm))
     return PermutationGroup(new_gens, domain=range(1, len(comp) + 1))
+
+
+def _wreath_stabilizers(X, a, side, pi, r, arity=1, check=True):
+    r"""
+    Return the stabilizers of an action of `W(r,n)` on the set ``X``.
+
+    This is the `r`-species analogue of calling
+    :func:`~sage.rings.species._stabilizer_subgroups` with a symmetric
+    group: the acting group is the wreath product `W(r,n)` built on the
+    domain specified by ``pi``, and the returned stabilizers are
+    relabelled so that they act on the standard domain
+    `\{1, \ldots, rn\}` with the standard block system.
+
+    INPUT:
+
+    - ``X`` -- the set of structures being acted on
+    - ``a`` -- the action, cf.
+      :func:`~sage.rings.species._stabilizer_subgroups`
+    - ``side`` -- ``'left'`` or ``'right'``
+    - ``pi`` -- a dictionary (or iterable) mapping sorts to domains; the
+      domains must be unions of complete `C_r`-blocks
+    - ``r`` -- positive integer; the order of the cyclic group
+    - ``arity`` -- the number of sorts (currently ``1``)
+    - ``check`` -- boolean (default: ``True``); whether to check that
+      ``a`` is a group action
+
+    OUTPUT:
+
+    A list of subgroups of `W(r,n)` on the standard domain, one for
+    each orbit of the action.
+
+    EXAMPLES::
+
+        sage: from sage.rings.species_hyperoctahedral import _wreath_stabilizers
+        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+        sage: W = _wreath_group(2, 2)
+        sage: X = list(W.domain())
+        sage: a = lambda g, x: g(x)
+        sage: H = _wreath_stabilizers(X, a, 'left', {0: list(W.domain())}, 2)
+        sage: len(H)
+        1
+        sage: H[0].order()
+        2
+    """
+    from sage.rings.species import _stabilizer_subgroups
+    if pi is None:
+        raise ValueError("the assignment of sorts to the domain elements must be provided")
+    if not isinstance(pi, dict):
+        pi = dict(enumerate(pi))
+    dompart = [sorted(pi.get(s, [])) for s in range(arity)]
+    domain = list(chain.from_iterable(dompart))
+    W = _wreath_group_on_domain(domain, r)
+    return [_standardize_component(H, H.domain(), r)
+            for H in _stabilizer_subgroups(W, X, a, side=side, check=check)]
 
 
 def _check_standard_domain(G, r):
@@ -700,6 +757,8 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         IndexedFreeAbelianMonoid.__init__(self, indices, prefix='',
                                           bracket=False, category=category)
         self._r = ZZ(r)
+        # currently there is only one sort; kept for future multisort support
+        self._arity = 1
 
     def _repr_(self):
         r"""
@@ -713,17 +772,27 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         """
         return f"Molecular {self._r}-species"
 
-    def _element_constructor_(self, G, check=True):
+    def _element_constructor_(self, G, pi=None, check=True):
         r"""
         Construct the molecular `r`-species given by the subgroup ``G``.
 
         INPUT:
 
-        - ``G`` -- a permutation group which is a subgroup of `W(r,n)`
-          on the standard domain, or an element of ``self``, or a
-          dictionary from atoms to exponents
+        - ``G`` -- one of the following:
+
+          - a permutation group which is a subgroup of `W(r,n)` on the
+            standard domain
+          - an element of ``self``
+          - a dictionary from atoms to exponents
+          - a triple ``(X, a, side)`` consisting of a finite set, an
+            action and a string ``'left'`` or ``'right'``; the side can
+            be omitted, it is then assumed to be ``'right'``
+
+        - ``pi`` -- a dictionary mapping sorts to iterables whose union
+          is the domain of the acting wreath product; required when
+          ``G`` is an action
         - ``check`` -- boolean (default: ``True``); whether to check
-          the dictionary input
+          the dictionary input and the group action
 
         EXAMPLES:
 
@@ -751,6 +820,15 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
 
             sage: M(_wreath_group(2, 2).subgroup([(1, 2)]))
             X°*X
+
+        The stabilizer of a point under the natural action of
+        `W(2,2)`::
+
+            sage: W = _wreath_group(2, 2)
+            sage: X = list(W.domain())
+            sage: a = lambda g, x: g(x)
+            sage: M((X, a, 'left'), {0: list(W.domain())})
+            X*X°
         """
         if parent(G) is self:
             raise ValueError("cannot reassign data to a molecular species")
@@ -761,6 +839,19 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                 if not all(isinstance(e, Integer) for e in G.values()):
                     raise ValueError(f"all values of the dict {G} must be Integers")
             return self.element_class(self, G)
+        if isinstance(G, tuple):
+            if len(G) == 2:
+                X, a = G
+                side = 'right'
+            else:
+                X, a, side = G
+                if side not in ['left', 'right']:
+                    raise ValueError(f"the side must be 'right' or 'left', but is {side}")
+            stabilizers = _wreath_stabilizers(X, a, side, pi, self._r,
+                                              self._arity, check=check)
+            if len(stabilizers) > 1:
+                raise ValueError("action is not transitive")
+            G = stabilizers[0]
         if not isinstance(G, PermutationGroup_generic):
             raise ValueError(f"{G} must be a permutation group")
         _check_standard_domain(G, self._r)
@@ -1110,6 +1201,8 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             sage: TestSuite(P).run()
         """
         self._r = ZZ(r)
+        # currently there is only one sort; kept for future multisort support
+        self._arity = 1
         category = GradedAlgebrasWithBasis(base_ring).Commutative()
         CombinatorialFreeModule.__init__(self, base_ring,
                                          basis_keys=MolecularHyperoctahedralSpecies(self._r),
@@ -1128,7 +1221,7 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
         """
         return f"Polynomial {self._r}-species over {self.base_ring()}"
 
-    def _element_constructor_(self, G, check=True):
+    def _element_constructor_(self, G, pi=None, check=True):
         r"""
         Construct the polynomial `r`-species given by ``G``.
 
@@ -1142,9 +1235,15 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             standard domain
           - a dictionary from molecular `r`-species to elements of the
             base ring
+          - a triple ``(X, a, side)`` consisting of a finite set, an
+            action and a string ``'left'`` or ``'right'``; the side can
+            be omitted, it is then assumed to be ``'right'``
 
-        - ``check`` -- boolean (default: ``True``); skip input checking
-          if ``False``
+        - ``pi`` -- a dictionary mapping sorts to iterables whose union
+          is the domain of the acting wreath product; required when
+          ``G`` is an action
+        - ``check`` -- boolean (default: ``True``); whether to check
+          the dictionary input and the group action
 
         EXAMPLES::
 
@@ -1164,6 +1263,14 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
 
             sage: P(W.subgroup([(1, 2)]))
             X°*X
+
+        The stabilizer of a point under the natural action of
+        `W(2,2)`::
+
+            sage: X = list(W.domain())
+            sage: a = lambda g, x: g(x)
+            sage: P((X, a, 'left'), {0: list(W.domain())})
+            X*X°
 
         TESTS::
 
@@ -1190,6 +1297,21 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
                 if not all(e in self.base_ring() for e in G.values()):
                     raise ValueError(f"all values of the dict {G} must be in {self.base_ring()}")
             return self._from_dict(G)
+
+        if isinstance(G, tuple):
+            if len(G) == 2:
+                X, a = G
+                side = 'right'
+            else:
+                X, a, side = G
+                if side not in ['left', 'right']:
+                    raise ValueError(f"the side must be 'right' or 'left', but is {side}")
+            stabilizers = _wreath_stabilizers(X, a, side, pi, self._r,
+                                              self._arity, check=check)
+            result = self.zero()
+            for H in stabilizers:
+                result += self.monomial(self._indices(H))
+            return result
 
         if isinstance(G, PermutationGroup_generic):
             M = self._indices(G)

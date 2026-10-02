@@ -417,3 +417,61 @@ def _hyperoctahedral_disjoint_direct_product_decomposition(H, r):
     # keep the genuine (nontrivial) components
     result.extend(frozenset(part) for part in decomposition if len(part) > 1)
     return SetPartition(result)
+
+
+def _wreath_group_on_domain(domain, r):
+    r"""
+    Return `W(r,n)` acting on the given domain.
+
+    The points of ``domain`` are divided into consecutive `C_r`-blocks,
+    that is, the `i`-th block consists of the points
+    ``domain[i*r], ..., domain[i*r + r - 1]``.  The group is generated
+    by the cyclic rotation of each block together with the simultaneous
+    swap of two adjacent blocks.
+
+    This is the analogue of :func:`_wreath_group` for an arbitrary
+    (ordered) domain, and is used to realize an action of `W(r,n)` on a
+    domain specified by the user.
+
+    INPUT:
+
+    - ``domain`` -- an ordered iterable of `rn` points, partitioned into
+      consecutive `C_r`-blocks
+    - ``r`` -- positive integer; the order of the cyclic group
+
+    EXAMPLES::
+
+        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group_on_domain
+        sage: G = _wreath_group_on_domain([4, 5, 6, 7], 2)
+        sage: G.order()
+        8
+        sage: G.domain()
+        {4, 5, 6, 7}
+
+    On the standard domain it agrees with :func:`_wreath_group`::
+
+        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+        sage: _wreath_group_on_domain(range(1, 7), 3) == _wreath_group(3, 2)
+        True
+
+    TESTS::
+
+        sage: _wreath_group_on_domain([1, 2, 3], 2)
+        Traceback (most recent call last):
+        ...
+        ValueError: the length 3 of the domain is not divisible by r = 2
+    """
+    r = ZZ(r)
+    if r < 1:
+        raise ValueError("r must be a positive integer")
+    domain = list(domain)
+    if len(domain) % r:
+        raise ValueError(f"the length {len(domain)} of the domain "
+                         f"is not divisible by r = {r}")
+    n = len(domain) // r
+    blocks = [domain[i * r:(i + 1) * r] for i in range(n)]
+
+    gens = [tuple(block) for block in blocks]
+    gens.extend(tuple((blocks[i][t], blocks[i + 1][t]) for t in range(r))
+                for i in range(n - 1))
+    return PermutationGroup(gens, domain=domain)
