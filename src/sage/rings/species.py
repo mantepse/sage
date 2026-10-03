@@ -2827,9 +2827,9 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
 
         `E_2(X^\circ)` is the full wreath product `W(2,2)`::
 
-            sage: E2(X).support()[0].permutation_group().order()
+            sage: E2(X).support()[0].permutation_group()[0].order()
             2
-            sage: E2(Xo).support()[0].permutation_group().order()
+            sage: E2(Xo).support()[0].permutation_group()[0].order()
             8
 
         The substitution is linear in the outer species and associative
@@ -2844,7 +2844,7 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
 
             sage: H1 = PolynomialHyperoctahedralSpecies(QQ, 1)
             sage: X1 = H1(_wreath_group(1, 1).subgroup([]))
-            sage: E2(X1).support()[0].permutation_group().order()
+            sage: E2(X1).support()[0].permutation_group()[0].order()
             2
         """
         from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies

@@ -62,6 +62,30 @@ are conjugate, while they would not be conjugate in `S_4`::
     sage: M(W.subgroup([(1, 2)])) == M(W.subgroup([(3, 4)]))
     True
 
+Multisort `r`-species of grade `(n_1,\ldots,n_k)` are transitive sets
+for the wreath Young subgroup `W(r;n_1,\ldots,n_k)`.  For example, the
+diagonal `C_2` acting simultaneously on a block of each sort is an
+atomic species of grade `(1,1)`, because it is directly
+indecomposable::
+
+    sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+    sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+    sage: W = _wreath_young_subgroup(2, [1, 1])
+    sage: a = A(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+    sage: a.grade()
+    [1, 1]
+    sage: a.is_atomic()
+    True
+
+By contrast, the full product `C_2 \times C_2` of the sign changes on
+each sort decomposes into two molecular factors::
+
+    sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+    sage: M(W.subgroup([(1, 2), (3, 4)]), {0: [1, 2], 1: [3, 4]})
+    X°*Y°
+    sage: M(W.subgroup([]), {0: [1, 2], 1: [3, 4]})
+    X*Y
+
 REFERENCES:
 
 .. [Henderson2004] Anthony Henderson.
@@ -92,10 +116,14 @@ from sage.categories.graded_algebras_with_basis import GradedAlgebrasWithBasis
 from sage.categories.monoids import Monoids
 from sage.categories.sets_with_grading import SetsWithGrading
 from sage.combinat.free_module import CombinatorialFreeModule
+from sage.combinat.integer_vector import IntegerVectors
 from sage.groups.perm_gps.constructor import PermutationGroupElement
 from sage.groups.perm_gps.hyperoctahedral_group import (
+    _check_grade,
+    _wreath_blocks,
     _wreath_group,
-    _wreath_group_on_domain,
+    _wreath_young_subgroup,
+    _wreath_young_subgroup_on_domain,
     _hyperoctahedral_disjoint_direct_product_decomposition,
 )
 from sage.groups.perm_gps.permgroup import PermutationGroup, PermutationGroup_generic
@@ -107,8 +135,8 @@ from sage.monoids.indexed_free_monoid import (IndexedFreeAbelianMonoid,
                                               IndexedFreeAbelianMonoidElement)
 from sage.rings.integer import Integer
 from sage.rings.integer_ring import ZZ
-from sage.sets.non_negative_integers import NonNegativeIntegers
 from sage.sets.set import Set
+from sage.structure.category_object import normalize_names
 from sage.structure.element import Element, parent
 from sage.structure.parent import Parent
 from sage.structure.unique_representation import (UniqueRepresentation,
@@ -118,87 +146,96 @@ GAP_FAIL = libgap.eval('fail')
 
 
 @cached_function
-def _wreath_subgroup_classes(r, n):
+def _wreath_young_subgroup_classes(r, grade):
     r"""
-    Return representatives of the conjugacy classes of subgroups of `W(r,n)`.
+    Return representatives of the conjugacy classes of subgroups of
+    `W(r;` ``grade`` `)`.
 
     INPUT:
 
     - ``r`` -- positive integer; the order of the cyclic group
-    - ``n`` -- nonnegative integer
+    - ``grade`` -- a tuple of nonnegative integers, the number of
+      `C_r`-blocks in each sort
 
     EXAMPLES::
 
-        sage: from sage.rings.species_hyperoctahedral import _wreath_subgroup_classes
-        sage: len(_wreath_subgroup_classes(2, 2))
+        sage: from sage.rings.species_hyperoctahedral import _wreath_young_subgroup_classes
+        sage: len(_wreath_young_subgroup_classes(2, (2,)))
         8
-        sage: all(G.degree() == 4 for G in _wreath_subgroup_classes(2, 2))
+        sage: all(G.degree() == 4 for G in _wreath_young_subgroup_classes(2, (2,)))
         True
+        sage: len(_wreath_young_subgroup_classes(2, (1, 1)))
+        5
     """
-    return _wreath_group(r, n).conjugacy_classes_subgroups()
+    grade = _check_grade(grade)
+    return _wreath_young_subgroup(r, grade).conjugacy_classes_subgroups()
 
 
 @cached_function
-def _wreath_subgroup_classes_by_order(r, n):
+def _wreath_young_subgroup_classes_by_order(r, grade):
     r"""
-    Return the `W(r,n)`-subgroup classes grouped by order.
+    Return the `W(r;` ``grade`` `)`-subgroup classes grouped by order.
 
     EXAMPLES::
 
-        sage: from sage.rings.species_hyperoctahedral import _wreath_subgroup_classes_by_order
-        sage: d = _wreath_subgroup_classes_by_order(2, 2)
+        sage: from sage.rings.species_hyperoctahedral import _wreath_young_subgroup_classes_by_order
+        sage: d = _wreath_young_subgroup_classes_by_order(2, (2,))
         sage: sorted(d)
         [1, 2, 4, 8]
         sage: [len(v) for k, v in sorted(d.items())]
         [1, 3, 3, 1]
     """
     result = {}
-    for idx, rep in enumerate(_wreath_subgroup_classes(r, n)):
+    for idx, rep in enumerate(_wreath_young_subgroup_classes(r, grade)):
         result.setdefault(rep.order(), []).append((idx, rep))
     return result
 
 
 @cached_function
-def _wreath_subgroup_class_id_to_index(r, n):
+def _wreath_young_subgroup_class_id_to_index(r, grade):
     r"""
     Return the map from subgroup class representatives to their index.
 
     The keys are the (object) identities of the representatives returned
-    by :func:`_wreath_subgroup_classes`; these objects are kept alive by
-    the cache of that function.
+    by :func:`_wreath_young_subgroup_classes`; these objects are kept
+    alive by the cache of that function.
 
     EXAMPLES::
 
         sage: from sage.rings.species_hyperoctahedral import (
-        ....:     _wreath_subgroup_classes, _wreath_subgroup_class_id_to_index)
-        sage: d = _wreath_subgroup_class_id_to_index(2, 2)
+        ....:     _wreath_young_subgroup_classes, _wreath_young_subgroup_class_id_to_index)
+        sage: d = _wreath_young_subgroup_class_id_to_index(2, (2,))
         sage: len(d)
         8
         sage: all(d[id(rep)] == idx
-        ....:     for idx, rep in enumerate(_wreath_subgroup_classes(2, 2)))
+        ....:     for idx, rep in enumerate(_wreath_young_subgroup_classes(2, (2,))))
         True
     """
     return {id(rep): idx
-            for idx, rep in enumerate(_wreath_subgroup_classes(r, n))}
+            for idx, rep in enumerate(_wreath_young_subgroup_classes(r, grade))}
 
 
-def _canonical_wreath_subgroup_index(G, r):
+def _canonical_wreath_subgroup_index(G, r, grade=None):
     r"""
-    Return the index of the `W(r,n)`-conjugacy class of ``G``.
+    Return the index of the `W(r;` ``grade`` `)`-conjugacy class of ``G``.
 
-    The subgroup ``G`` must be a subgroup of `W(r,n)` acting on
-    `\{1, \ldots, rn\}` with the standard consecutive block system.
+    The subgroup ``G`` must act on `\{1, \ldots, rn\}` with the standard
+    consecutive block system, where `n` is the total number of
+    `C_r`-blocks.  If ``grade`` is not provided, it is assumed that all
+    blocks belong to a single sort.
 
     INPUT:
 
     - ``G`` -- a permutation group
     - ``r`` -- positive integer; the order of the cyclic group
+    - ``grade`` -- a tuple of nonnegative integers or ``None``
+      (default); the number of `C_r`-blocks in each sort
 
     OUTPUT:
 
     A pair ``(index, representative)``, where ``representative`` is the
-    (unique) representative of the `W(r,n)`-conjugacy class of ``G`` in
-    :func:`_wreath_subgroup_classes`.
+    (unique) representative of the `W(r;` ``grade`` `)`-conjugacy class
+    of ``G`` in :func:`_wreath_young_subgroup_classes`.
 
     EXAMPLES::
 
@@ -211,20 +248,74 @@ def _canonical_wreath_subgroup_index(G, r):
         True
         sage: _canonical_wreath_subgroup_index(rep, 2)[0] == idx
         True
+
+    For several sorts the ambient group is the wreath Young subgroup::
+
+        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+        sage: W = _wreath_young_subgroup(2, [1, 1])
+        sage: G = W.subgroup([(1, 2)])
+        sage: idx, rep = _canonical_wreath_subgroup_index(G, 2, (1, 1))
+        sage: rep.is_subgroup(W)
+        True
+        sage: rep.gens()
+        ((1,2),)
+
+    A group which is not a subgroup of the ambient wreath product is
+    rejected::
+
+        sage: G = PermutationGroup([(1, 3)])
+        sage: _canonical_wreath_subgroup_index(G, 2, (2,))
+        Traceback (most recent call last):
+        ...
+        ValueError: Permutation Group with generators [(1,3)] is not conjugate to a subgroup of Permutation Group with generators [(3,4), (1,2), (1,3)(2,4)]
     """
-    n = G.degree() // r
-    W = _wreath_group(r, n)
+    if grade is None:
+        grade = (G.degree() // r,)
+    else:
+        grade = _check_grade(grade)
+    W = _wreath_young_subgroup(r, grade)
     W_gap = W.gap()
     G_gap = G.gap()
-    classes = _wreath_subgroup_classes(r, n)
-    by_id = _wreath_subgroup_class_id_to_index(r, n)
+    classes = _wreath_young_subgroup_classes(r, grade)
+    by_id = _wreath_young_subgroup_class_id_to_index(r, grade)
     if id(G) in by_id:
         idx = by_id[id(G)]
         return idx, classes[idx]
-    for idx, rep in _wreath_subgroup_classes_by_order(r, n).get(G.order(), []):
+    for idx, rep in _wreath_young_subgroup_classes_by_order(r, grade).get(G.order(), []):
         if libgap.RepresentativeAction(W_gap, G_gap, rep.gap()) != GAP_FAIL:
             return idx, rep
     raise ValueError(f"{G} is not conjugate to a subgroup of {W}")
+
+
+def _canonical_dompart(r, grade):
+    r"""
+    Return the canonical partition of the standard domain into sorts.
+
+    The blocks of sort `s` are the consecutive blocks with numbers
+    `n_1+\cdots+n_s+1, \ldots, n_1+\cdots+n_{s+1}`.
+
+    INPUT:
+
+    - ``r`` -- positive integer; the order of the cyclic group
+    - ``grade`` -- a tuple of nonnegative integers, the number of
+      `C_r`-blocks in each sort
+
+    OUTPUT:
+
+    A tuple of frozensets, the `s`-th entry consisting of the points
+    of sort `s`.
+
+    EXAMPLES::
+
+        sage: from sage.rings.species_hyperoctahedral import _canonical_dompart
+        sage: _canonical_dompart(2, (2, 1))
+        (frozenset({1, 2, 3, 4}), frozenset({5, 6}))
+        sage: _canonical_dompart(2, (0, 1))
+        (frozenset(), frozenset({1, 2}))
+    """
+    return tuple(frozenset(range(r * sum(grade[:s]) + 1,
+                                    r * sum(grade[:s + 1]) + 1))
+                 for s in range(len(grade)))
 
 
 def _standardize_component(H, comp, r):
@@ -277,14 +368,15 @@ def _standardize_component(H, comp, r):
 
 def _wreath_stabilizers(X, a, side, pi, r, arity=1, check=True):
     r"""
-    Return the stabilizers of an action of `W(r,n)` on the set ``X``.
+    Return the stabilizers of an action of `W(r;n_1,\ldots,n_k)` on the
+    set ``X``, together with the assignment of sorts.
 
     This is the `r`-species analogue of calling
     :func:`~sage.rings.species._stabilizer_subgroups` with a symmetric
-    group: the acting group is the wreath product `W(r,n)` built on the
-    domain specified by ``pi``, and the returned stabilizers are
-    relabelled so that they act on the standard domain
-    `\{1, \ldots, rn\}` with the standard block system.
+    group: the acting group is the wreath Young subgroup
+    `W(r;n_1,\ldots,n_k)` built on the domain specified by ``pi``, and
+    the returned stabilizers are relabelled so that they act on the
+    standard domain `\{1, \ldots, rn\}` with the standard block system.
 
     INPUT:
 
@@ -295,14 +387,15 @@ def _wreath_stabilizers(X, a, side, pi, r, arity=1, check=True):
     - ``pi`` -- a dictionary (or iterable) mapping sorts to domains; the
       domains must be unions of complete `C_r`-blocks
     - ``r`` -- positive integer; the order of the cyclic group
-    - ``arity`` -- the number of sorts (currently ``1``)
+    - ``arity`` -- the number of sorts
     - ``check`` -- boolean (default: ``True``); whether to check that
       ``a`` is a group action
 
     OUTPUT:
 
-    A list of subgroups of `W(r,n)` on the standard domain, one for
-    each orbit of the action.
+    A list of pairs ``(H, pi_H)``, one for each orbit of the action,
+    where ``H`` is a subgroup of `W(r,n)` on the standard domain and
+    ``pi_H`` assigns the points of its domain to sorts.
 
     EXAMPLES::
 
@@ -314,8 +407,21 @@ def _wreath_stabilizers(X, a, side, pi, r, arity=1, check=True):
         sage: H = _wreath_stabilizers(X, a, 'left', {0: list(W.domain())}, 2)
         sage: len(H)
         1
-        sage: H[0].order()
+        sage: H[0][0].order()
         2
+        sage: H[0][1]
+        {0: [1, 2, 3, 4]}
+
+    For several sorts the acting group is the wreath Young subgroup,
+    which has two orbits on its own domain::
+
+        sage: H = _wreath_stabilizers(X, a, 'left', {0: [1, 2], 1: [3, 4]}, 2, arity=2)
+        sage: len(H)
+        2
+        sage: H[0][0].order()
+        2
+        sage: H[0][1]
+        {0: [1, 2], 1: [3, 4]}
     """
     from sage.rings.species import _stabilizer_subgroups
     if pi is None:
@@ -324,9 +430,13 @@ def _wreath_stabilizers(X, a, side, pi, r, arity=1, check=True):
         pi = dict(enumerate(pi))
     dompart = [sorted(pi.get(s, [])) for s in range(arity)]
     domain = list(chain.from_iterable(dompart))
-    W = _wreath_group_on_domain(domain, r)
-    return [_standardize_component(H, H.domain(), r)
-            for H in _stabilizer_subgroups(W, X, a, side=side, check=check)]
+    W = _wreath_young_subgroup_on_domain(dompart, r)
+    stabilizers = _stabilizer_subgroups(W, X, a, side=side, check=check)
+
+    relabel = {p: i + 1 for i, p in enumerate(sorted(domain))}
+    return [(_standardize_component(H, H.domain(), r),
+             {s: [relabel[p] for p in b] for s, b in enumerate(dompart)})
+            for H in stabilizers]
 
 
 def _check_standard_domain(G, r):
@@ -366,13 +476,15 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
     r"""
     The set of atomic `r`-species.
 
-    An atomic `r`-species of degree `n` is a directly indecomposable
-    transitive `W(r,n)`-set, represented up to conjugacy inside
-    `W(r,n)`.
+    An atomic `r`-species of grade `(n_1,\ldots,n_k)` is a directly
+    indecomposable transitive `W(r;n_1,\ldots,n_k)`-set, represented up
+    to conjugacy inside `W(r;n_1,\ldots,n_k)`.
 
     INPUT:
 
     - ``r`` -- positive integer; the order of the cyclic group
+    - ``names`` -- an iterable of strings for the sorts of the species
+      (default: ``"X"``)
 
     EXAMPLES::
 
@@ -381,12 +493,17 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         sage: A
         Atomic 2-species
         sage: A.grading_set()
-        Non negative integers
+        Integer vectors of length 1
+
+        sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+        sage: A
+        Atomic 2-species in X, Y
 
     TESTS::
 
-        sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
         sage: AtomicHyperoctahedralSpecies(2) is AtomicHyperoctahedralSpecies(ZZ(2))
+        True
+        sage: AtomicHyperoctahedralSpecies(2) is AtomicHyperoctahedralSpecies(2, "X")
         True
         sage: AtomicHyperoctahedralSpecies(0)
         Traceback (most recent call last):
@@ -394,7 +511,7 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         ValueError: r must be a positive integer
     """
     @staticmethod
-    def __classcall__(cls, r):
+    def __classcall__(cls, r, names="X"):
         r"""
         Normalize the arguments for unique representation.
 
@@ -407,9 +524,10 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         r = ZZ(r)
         if r < 1:
             raise ValueError("r must be a positive integer")
-        return super().__classcall__(cls, r)
+        names = normalize_names(-1, names)
+        return super().__classcall__(cls, r, names)
 
-    def __init__(self, r):
+    def __init__(self, r, names):
         r"""
         Initialize the class of atomic `r`-species.
 
@@ -419,12 +537,24 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: A = AtomicHyperoctahedralSpecies(2)
             sage: A._r
             2
+            sage: A._arity
+            1
+
+        TESTS:
+
+        We have to exclude ``_test_graded_components``, because
+        :meth:`~sage.combinat.integer_vector.IntegerVectors.some_elements`
+        yields degrees that are too large::
+
+            sage: TestSuite(AtomicHyperoctahedralSpecies(2)).run(skip="_test_graded_components")
+            sage: TestSuite(AtomicHyperoctahedralSpecies(2, "X, Y")).run(skip="_test_graded_components")
         """
         category = SetsWithGrading().Infinite()
-        Parent.__init__(self, category=category)
+        Parent.__init__(self, names=names, category=category)
         self._r = ZZ(r)
+        self._arity = len(names)
         self._cache = dict()
-        # the degrees whose standard species have already been renamed
+        # the grades whose standard species have already been renamed
         self._renamed = set()
 
     def _repr_(self):
@@ -436,19 +566,57 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
             sage: AtomicHyperoctahedralSpecies(3)
             Atomic 3-species
+            sage: AtomicHyperoctahedralSpecies(3, "X, Y")
+            Atomic 3-species in X, Y
         """
-        return f"Atomic {self._r}-species"
+        if len(self._names) == 1:
+            return f"Atomic {self._r}-species"
+        return f"Atomic {self._r}-species in {', '.join(self._names)}"
 
-    def _rename(self, n):
+    def _an_element_(self):
         r"""
-        Give the standard atomic `r`-species of degree ``n`` their names.
+        Return an element of ``self``.
 
-        For `n = 1` the atomic `r`-species correspond to the divisors
-        `d \mid r`: the stabilizer of the species `C_r / C_d` is the
-        cyclic group `C_d` of order `d`.  Following the convention of
-        [Henderson2004]_, we display it as ``X@d``, with the extremal
-        cases ``X = X@1`` and ``X° = X@r``, and with ``X`` for the
-        unique species when `r = 1`.
+        This is the diagonal cyclic `r`-species: it acts as a full
+        `r`-cycle on one block per sort.
+
+        TESTS::
+
+            sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
+            sage: AtomicHyperoctahedralSpecies(2).an_element()
+            X°
+            sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+            sage: A.an_element()
+            {((1,2)(3,4),): ({1, 2}, {3, 4})}
+
+            sage: A = AtomicHyperoctahedralSpecies(1, "X, Y")
+            sage: A.an_element()
+            {((1,2)(3,4),): ({1, 2}, {3, 4})}
+        """
+        r = self._r
+        k = self._arity
+        if r == 1:
+            # swap two singletons per sort
+            gens = [[(2*s + 1, 2*s + 2) for s in range(k)]]
+            pi = {s: [2*s + 1, 2*s + 2] for s in range(k)}
+        else:
+            # rotate one block per sort
+            gens = [[tuple(range(r*s + 1, r*s + r + 1)) for s in range(k)]]
+            pi = {s: list(range(r*s + 1, r*s + r + 1)) for s in range(k)}
+        G = PermutationGroup(gens)
+        return self._element_constructor_(G, pi)
+
+    def _rename(self, grade):
+        r"""
+        Give the standard atomic `r`-species of unit grade their names.
+
+        For a unit grade the atomic `r`-species correspond to the
+        divisors `d \mid r`: the stabilizer of the species `C_r / C_d`
+        is the cyclic group `C_d` of order `d`.  Following the
+        convention of [Henderson2004]_, we display it as ``X@d``, with
+        the extremal cases ``X = X@1`` and ``X° = X@r``, and with
+        ``X`` for the unique species when `r = 1`.  Every sort receives
+        the names obtained from its own name in this way.
 
         EXAMPLES::
 
@@ -457,29 +625,38 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: A = AtomicHyperoctahedralSpecies(2)
             sage: A(_wreath_group(2, 1))
             X°
+            sage: A = AtomicHyperoctahedralSpecies(4, "X, Y")
+            sage: sorted(A.graded_component([0, 1]), key=str)
+            [Y, Y@2, Y°]
         """
-        if n != 1:
+        if sum(grade) != 1:
             return
+        s = list(grade).index(1)
         W = _wreath_group(self._r, 1)
         cycle = W.gens()[0]
         for d in divisors(self._r):
             G = W.subgroup([cycle ** (self._r // d)])
             if d == 1:
-                name = "X"
+                name = self._names[s]
             elif d == self._r:
-                name = "X°"
+                name = self._names[s] + "°"
             else:
-                name = f"X@{d}"
-            self(G, check=False).rename(name)
+                name = f"{self._names[s]}@{d}"
+            self(G, _canonical_dompart(self._r, grade),
+                 check=False).rename(name)
 
-    def _element_constructor_(self, G, check=True):
+    def _element_constructor_(self, G, pi=None, check=True):
         r"""
-        Construct the atomic `r`-species given by the subgroup ``G``.
+        Construct the atomic `r`-species with the given data.
 
         INPUT:
 
-        - ``G`` -- a permutation group which is a subgroup of `W(r,n)`
-          on the standard domain, or an element of ``self``
+        - ``G`` -- element of ``self`` (in this case ``pi`` must be
+          ``None``) or a permutation group which is a subgroup of
+          `W(r,n)` on the standard domain
+        - ``pi`` -- a dictionary (or iterable) mapping sorts to
+          iterables whose union is the domain of ``G``; if the arity is
+          one, ``pi`` can be omitted
         - ``check`` -- boolean (default: ``True``); whether to check
           that ``G`` is directly indecomposable
 
@@ -495,31 +672,58 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             Traceback (most recent call last):
             ...
             ValueError: ((1,2), (3,4)) is not directly indecomposable
+
+        TESTS::
+
+            sage: A(G)
+            {((1,2), (3,4), (1,3)(2,4))}
         """
         if parent(G) is self:
-            return G
+            if pi is None:
+                return G
+            raise ValueError("cannot reassign sorts to an atomic species")
         if not isinstance(G, PermutationGroup_generic):
             raise ValueError(f"{G} must be a permutation group")
-        _check_standard_domain(G, self._r)
-        if check and len(_hyperoctahedral_disjoint_direct_product_decomposition(G, self._r)) != 1:
-            raise ValueError(f"{G.gens()} is not directly indecomposable")
-        return self.element_class(self, G)
+        if check:
+            _check_standard_domain(G, self._r)
+            if len(_hyperoctahedral_disjoint_direct_product_decomposition(G, self._r)) != 1:
+                raise ValueError(f"{G.gens()} is not directly indecomposable")
+        if pi is None:
+            if self._arity == 1:
+                pi = {0: G.domain()}
+            else:
+                raise ValueError("the assignment of sorts to the domain elements must be provided")
+        elif not isinstance(pi, dict):
+            pi = dict(enumerate(pi))
+        if check:
+            if not set(pi).issubset(range(self._arity)):
+                raise ValueError(f"keys of pi (={pi.keys()}) must be in range({self._arity})")
+            if (sum(len(p) for p in pi.values()) != len(G.domain())
+                    or set(chain.from_iterable(pi.values())) != set(G.domain())):
+                raise ValueError(f"values of pi (={pi.values()}) must partition the domain of G (={G.domain()})")
+        dompart = [sorted(pi.get(s, [])) for s in range(self._arity)]
+        return self.element_class(self, G, dompart)
 
     def grading_set(self):
         r"""
         Return the grading set of ``self``.
 
+        This is the set of integer vectors whose length is the arity of
+        ``self``.
+
         EXAMPLES::
 
             sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
             sage: AtomicHyperoctahedralSpecies(2).grading_set()
-            Non negative integers
+            Integer vectors of length 1
+            sage: AtomicHyperoctahedralSpecies(2, "X, Y").grading_set()
+            Integer vectors of length 2
         """
-        return NonNegativeIntegers()
+        return IntegerVectors(length=self._arity)
 
     def subset(self, size):
         r"""
-        Return the set of atomic `r`-species of degree ``size``.
+        Return the set of atomic `r`-species of total degree ``size``.
 
         EXAMPLES::
 
@@ -527,12 +731,19 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: A = AtomicHyperoctahedralSpecies(2)
             sage: sorted(a.degree() for a in A.subset(2))
             [2, 2, 2, 2, 2]
-        """
-        return self.graded_component(size)
 
-    def graded_component(self, n):
+            sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+            sage: sorted(A.subset(1), key=str)
+            [X, X°, Y, Y°]
+        """
+        result = Set()
+        for grade in IntegerVectors(size, length=self._arity):
+            result = result.union(self.graded_component(grade))
+        return result
+
+    def graded_component(self, grade):
         r"""
-        Return the set of atomic `r`-species of degree ``n``.
+        Return the set of atomic `r`-species of grade ``grade``.
 
         EXAMPLES::
 
@@ -540,14 +751,42 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: A = AtomicHyperoctahedralSpecies(2)
             sage: len(A.graded_component(2))
             5
+
+            sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+            sage: len(A.graded_component([1, 0]))
+            2
+            sage: len(A.graded_component([1, 1]))
+            1
+
+        The unique atom of grade `(1,1)` for `r = 2` is the diagonal
+        `C_2`::
+
+            sage: a = next(iter(A.graded_component([1, 1]))); a
+            {((1,2)(3,4),): ({1, 2}, {3, 4})}
+
+        For `r = 1` the number of atoms agrees with the number of
+        atomic species::
+
+            sage: from sage.rings.species import AtomicSpecies
+            sage: A1 = AtomicHyperoctahedralSpecies(1, "X, Y")
+            sage: B = AtomicSpecies("X, Y")
+            sage: all(len(A1.graded_component(list(mc))) == len(B.graded_component(list(mc)))
+            ....:     for mc in IntegerVectors(3, length=2))
+            True
         """
-        return Set([self(rep) for rep in _wreath_subgroup_classes(self._r, n)
-                    if len(_hyperoctahedral_disjoint_direct_product_decomposition(rep, self._r)) == 1])
+        if not hasattr(grade, '__len__'):
+            grade = (grade,)
+        if len(grade) != self._arity:
+            raise ValueError("invalid degree")
+        grade = _check_grade(grade)
+        return Set([self(G, _canonical_dompart(self._r, grade), check=False)
+                    for G in _wreath_young_subgroup_classes(self._r, grade)
+                    if len(_hyperoctahedral_disjoint_direct_product_decomposition(G, self._r)) == 1])
 
     def __contains__(self, x):
         r"""
         Return whether ``x`` is an atomic `r`-species, or a subgroup
-        defining one.
+        together with an assignment of sorts defining one.
 
         EXAMPLES::
 
@@ -556,20 +795,57 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: A = AtomicHyperoctahedralSpecies(1)
             sage: _wreath_group(1, 1).subgroup([]) in A
             True
+
+        TESTS::
+
+            sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+            sage: W = _wreath_young_subgroup(2, [1, 1])
+            sage: (W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]}) in A
+            True
+            sage: (W.subgroup([(1, 2), (3, 4)]), {0: [1, 2], 1: [3, 4]}) in A
+            False
+            sage: (W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 3], 1: [2, 4]}) in A
+            False
         """
         if parent(x) is self:
             return True
-        if not isinstance(x, PermutationGroup_generic):
+        if isinstance(x, PermutationGroup_generic):
+            if self._arity == 1:
+                G = x
+                pi = {0: G.domain()}
+            else:
+                return False
+        else:
+            G, pi = x
+            if not isinstance(G, PermutationGroup_generic):
+                return False
+            if not isinstance(pi, dict):
+                pi = dict(enumerate(pi))
+        if not set(pi).issubset(range(self._arity)):
             return False
-        degree = x.degree()
+        if (sum(len(p) for p in pi.values()) != len(G.domain())
+                or set(chain.from_iterable(pi.values())) != set(G.domain())):
+            return False
+        degree = G.degree()
         if degree % self._r:
             return False
         W = _wreath_group(self._r, degree // self._r)
-        if set(x.domain()) != set(W.domain()):
+        if set(G.domain()) != set(W.domain()):
             return False
-        if libgap.IsSubgroup(W.gap(), x.gap()) != True:
+        dompart = [sorted(pi.get(s, [])) for s in range(self._arity)]
+        # each sort must be a union of complete C_r-blocks
+        for s_points in dompart:
+            s_set = set(s_points)
+            for b in _wreath_blocks(self._r, degree // self._r):
+                if len(s_set.intersection(b)) not in (0, len(b)):
+                    return False
+        for orbit in G.orbits():
+            if not any(set(orbit).issubset(s) for s in dompart):
+                return False
+        if libgap.IsSubgroup(W.gap(), G.gap()) != True:
             return False
-        return len(_hyperoctahedral_disjoint_direct_product_decomposition(x, self._r)) == 1
+        return len(_hyperoctahedral_disjoint_direct_product_decomposition(G, self._r)) == 1
 
     class Element(WithEqualityById,
                   Element,
@@ -579,9 +855,28 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         An atomic `r`-species.
         """
         @staticmethod
-        def __classcall__(cls, parent, G):
+        def __classcall__(cls, parent, G, dompart):
             r"""
             Normalize the input for unique representation.
+
+            The `C_r`-blocks of the domain are relabelled so that the
+            blocks of sort `0` come first, then the blocks of sort
+            `1`, and so on.  Afterwards the group is replaced by the
+            canonical representative of its conjugacy class in the
+            ambient wreath Young subgroup and the sort partition is the
+            canonical one.
+
+            INPUT:
+
+            - ``G`` -- a directly indecomposable permutation group
+            - ``dompart`` -- an iterable of `k` iterables, where `k` is
+              the arity, assigning each element of the domain of ``G``
+              to a sort
+
+            .. WARNING::
+
+                We do not check whether ``G`` is indeed directly
+                indecomposable.
 
             TESTS::
 
@@ -591,17 +886,75 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: G = _wreath_group(2, 2)
                 sage: A(G.subgroup([[(1, 3), (2, 4)]])) is A(G.subgroup([[(1, 3), (2, 4)]]))
                 True
+
+            The relabelling of the sorts identifies species which
+            differ only by the ordering of the blocks.  Here the
+            diagonal `C_2` is the unique atom of grade `(1,1)`::
+
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: a = A(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+                sage: a is A(W.subgroup([[(1, 2), (3, 4)]]), {0: [3, 4], 1: [1, 2]})
+                True
+                sage: a is A(W.subgroup([[(1, 2), (3, 4)]]), {0: [2, 1], 1: [4, 3]})
+                True
+
+            The subgroup acting on one sort only is not atomic::
+
+                sage: a is A(W.subgroup([(1, 2)]), {0: [1, 2], 1: [3, 4]})
+                Traceback (most recent call last):
+                ...
+                ValueError: ((1,2),) is not directly indecomposable
             """
             r = parent._r
-            idx, rep = _canonical_wreath_subgroup_index(G, r)
-            key = (G.degree() // r, idx)
+            _check_standard_domain(G, r)
+
+            dompart = [sorted(b) for b in dompart]
+
+            # each sort must be a union of complete C_r-blocks
+            point_sort = {}
+            for s, b in enumerate(dompart):
+                point_sort.update({p: s for p in b})
+            for blk in _wreath_blocks(r, G.degree() // r):
+                s = point_sort.get(blk[0])
+                for p in blk:
+                    if point_sort.get(p) != s:
+                        raise ValueError(f"the assignment of sorts {dompart} "
+                                         f"must be a union of C_{r}-blocks")
+
+            # every orbit of G must be contained in a single sort
+            for orbit in G.orbits():
+                if not any(set(orbit).issubset(b) for b in dompart):
+                    raise ValueError(f"all elements of orbit {list(orbit)} "
+                                     f"must have the same sort")
+
+            grade = tuple(len(b) // r for b in dompart)
+
+            # relabel the blocks so that the blocks of sort 0 come
+            # first, then the blocks of sort 1, and so on
+            ordered = list(chain.from_iterable(dompart))
+            if ordered != list(range(1, G.degree() + 1)):
+                relabel = {p: i + 1 for i, p in enumerate(ordered)}
+                gens = []
+                for gen in G.gens():
+                    cycles = [tuple(relabel[p] for p in cyc)
+                              for cyc in gen.cycle_tuples()]
+                    cycles = [cyc for cyc in cycles if cyc]
+                    if cycles:
+                        gens.append(PermutationGroupElement(cycles))
+                G = PermutationGroup(gens, domain=range(1, G.degree() + 1))
+
+            idx, rep = _canonical_wreath_subgroup_index(G, r, grade)
+            key = (grade, idx)
             if key in parent._cache:
                 return parent._cache[key]
-            elm = WithPicklingByInitArgs.__classcall__(cls, parent, rep)
+            elm = WithPicklingByInitArgs.__classcall__(
+                cls, parent, rep, _canonical_dompart(r, grade))
             parent._cache[key] = elm
             return elm
 
-        def __init__(self, parent, G):
+        def __init__(self, parent, dis, domain_partition):
             r"""
             Initialize an atomic `r`-species.
 
@@ -614,17 +967,27 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: TestSuite(a).run()
                 sage: loads(dumps(a)) is a
                 True
+
+                sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: a = A(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+                sage: TestSuite(a).run()
+                sage: loads(dumps(a)) is a
+                True
             """
             Element.__init__(self, parent)
-            self._dis = G
-            self._n = G.degree() // parent._r
+            self._dis = dis
+            self._dompart = domain_partition
+            self._mc = tuple(len(v) // parent._r for v in self._dompart)
+            self._tc = sum(self._mc)
 
         def _repr_(self):
             r"""
             Return a string representation of ``self``.
 
-            The first time a degree is displayed, the standard names
-            for that degree are installed by :meth:`_rename`.
+            The first time a grade is displayed, the standard names for
+            that grade are installed by :meth:`_rename`.
 
             EXAMPLES::
 
@@ -633,17 +996,34 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: A = AtomicHyperoctahedralSpecies(2)
                 sage: A(_wreath_group(2, 2).subgroup([[(1, 3), (2, 4)]]))
                 {((1,3)(2,4),)}
+
+                sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: A(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+                {((1,2)(3,4),): ({1, 2}, {3, 4})}
             """
             P = self.parent()
-            if self._n not in P._renamed:
-                P._renamed.add(self._n)
-                P._rename(self._n)
+            grade = tuple(self._mc)
+            if grade not in P._renamed:
+                P._renamed.add(grade)
+                P._rename(grade)
                 return repr(self)
-            return "{" + f"{self._dis.gens()}" + "}"
+            if P._arity == 1:
+                return "{" + f"{self._dis.gens()}" + "}"
+            dompart = ', '.join("{" + repr(sorted(b))[1:-1] + "}"
+                                for b in self._dompart)
+            return "{" + f"{self._dis.gens()}: ({dompart})" + "}"
 
         def permutation_group(self):
             r"""
-            Return the permutation group representing ``self``.
+            Return the permutation group representing ``self``, together
+            with the partition of its domain into sorts.
+
+            The group acts on the standard domain and is the canonical
+            representative of its conjugacy class in the ambient wreath
+            Young subgroup.  The domain partition consists of complete
+            `C_r`-blocks.
 
             EXAMPLES::
 
@@ -651,13 +1031,21 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
                 sage: A = AtomicHyperoctahedralSpecies(2)
                 sage: A(_wreath_group(2, 1)).permutation_group()
-                Subgroup generated by [(1,2)] of (Permutation Group with generators [(1,2)])
+                (Subgroup generated by [(1,2)] of (Permutation Group with generators [(1,2)]), (frozenset({1, 2}),))
+
+                sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: A(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]}).permutation_group()
+                (Subgroup generated by [(1,2)(3,4)] of (Permutation Group with generators [(3,4), (1,2)]), (frozenset({1, 2}), frozenset({3, 4})))
             """
-            return self._dis
+            return self._dis, self._dompart
 
         def degree(self):
             r"""
             Return the degree of ``self``.
+
+            This is the total number of `C_r`-blocks in its domain.
 
             EXAMPLES::
 
@@ -667,11 +1055,13 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: A(_wreath_group(2, 2).subgroup([[(1, 3), (2, 4)]])).degree()
                 2
             """
-            return self._n
+            return self._tc
 
         def grade(self):
             r"""
             Return the grade of ``self``.
+
+            This is the number of `C_r`-blocks in each sort.
 
             EXAMPLES::
 
@@ -679,9 +1069,15 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
                 sage: A = AtomicHyperoctahedralSpecies(2)
                 sage: A(_wreath_group(2, 2).subgroup([[(1, 3), (2, 4)]])).grade()
-                2
+                [2]
+
+                sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: A(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]}).grade()
+                [1, 1]
             """
-            return self._n
+            return self.parent().grading_set()(list(self._mc))
 
         def is_atomic(self):
             r"""
@@ -697,20 +1093,21 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             """
             return True
 
-    Element = Element
-
 
 class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
     r"""
     The monoid of molecular `r`-species.
 
     This is the commutative free abelian monoid generated by the atomic
-    `r`-species, exactly as :class:`~sage.rings.species.MolecularSpecies`
-    is generated by :class:`~sage.rings.species.AtomicSpecies`.
+    `r`-species, exactly as
+    :class:`~sage.rings.species.MolecularSpecies` is generated by
+    :class:`~sage.rings.species.AtomicSpecies`.
 
     INPUT:
 
     - ``r`` -- positive integer; the order of the cyclic group
+    - ``names`` -- an iterable of strings for the sorts of the species
+      (default: ``"X"``)
 
     EXAMPLES::
 
@@ -719,14 +1116,20 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         sage: M
         Molecular 2-species
 
+        sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+        sage: M
+        Molecular 2-species in X, Y
+
     TESTS::
 
         sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
         sage: MolecularHyperoctahedralSpecies(2) is MolecularHyperoctahedralSpecies(ZZ(2))
         True
+        sage: MolecularHyperoctahedralSpecies(2) is MolecularHyperoctahedralSpecies(2, "X")
+        True
     """
     @staticmethod
-    def __classcall__(cls, r):
+    def __classcall__(cls, r, names="X"):
         r"""
         Normalize the arguments for unique representation.
 
@@ -739,9 +1142,10 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         r = ZZ(r)
         if r < 1:
             raise ValueError("r must be a positive integer")
-        return UniqueRepresentation.__classcall__(cls, r)
+        names = normalize_names(-1, names)
+        return UniqueRepresentation.__classcall__(cls, r, names)
 
-    def __init__(self, r):
+    def __init__(self, r, names):
         r"""
         Initialize the monoid of molecular `r`-species.
 
@@ -751,14 +1155,24 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: M = MolecularHyperoctahedralSpecies(2)
             sage: M._r
             2
+            sage: M._arity
+            1
+
+        TESTS:
+
+        We have to exclude ``_test_graded_components``, because
+        :meth:`~sage.combinat.integer_vector.IntegerVectors.some_elements`
+        yields degrees that are too large::
+
+            sage: TestSuite(MolecularHyperoctahedralSpecies(2)).run(skip="_test_graded_components")
+            sage: TestSuite(MolecularHyperoctahedralSpecies(2, "X, Y")).run(skip="_test_graded_components")
         """
-        indices = AtomicHyperoctahedralSpecies(r)
+        indices = AtomicHyperoctahedralSpecies(r, names)
         category = Monoids().Commutative() & SetsWithGrading().Infinite()
         IndexedFreeAbelianMonoid.__init__(self, indices, prefix='',
                                           bracket=False, category=category)
         self._r = ZZ(r)
-        # currently there is only one sort; kept for future multisort support
-        self._arity = 1
+        self._arity = indices._arity
 
     def _repr_(self):
         r"""
@@ -769,28 +1183,54 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
             sage: MolecularHyperoctahedralSpecies(3)
             Molecular 3-species
+            sage: MolecularHyperoctahedralSpecies(3, "X, Y")
+            Molecular 3-species in X, Y
         """
-        return f"Molecular {self._r}-species"
+        if len(self._indices._names) == 1:
+            return f"Molecular {self._r}-species"
+        return f"Molecular {self._r}-species in {', '.join(self._indices._names)}"
+
+    def _first_ngens(self, n):
+        r"""
+        Used by the preparser for ``F.<x> = ...``.
+
+        We do not use the generic implementation of
+        :class:`sage.monoids.indexed_free_monoid.IndexedFreeAbelianMonoid`,
+        because the atomic species cannot be enumerated.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
+            sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+            sage: M._first_ngens(1)
+            (X,)
+            sage: M._first_ngens(2)
+            (X, Y)
+        """
+        singletons = [sorted(self._indices.graded_component(grade), key=str)[0]
+                      for grade in IntegerVectors(1, length=self._arity)]
+        return tuple(self.gen(a) for a in singletons[:n])
 
     def _element_constructor_(self, G, pi=None, check=True):
         r"""
-        Construct the molecular `r`-species given by the subgroup ``G``.
+        Construct the molecular `r`-species with the given data.
 
         INPUT:
 
         - ``G`` -- one of the following:
 
+          - an element of ``self``
           - a permutation group which is a subgroup of `W(r,n)` on the
             standard domain
-          - an element of ``self``
           - a dictionary from atoms to exponents
           - a triple ``(X, a, side)`` consisting of a finite set, an
             action and a string ``'left'`` or ``'right'``; the side can
             be omitted, it is then assumed to be ``'right'``
 
-        - ``pi`` -- a dictionary mapping sorts to iterables whose union
-          is the domain of the acting wreath product; required when
-          ``G`` is an action
+        - ``pi`` -- a dictionary (or iterable) mapping sorts to iterables
+          whose union is the domain of ``G``, resp. the domain of the
+          acting wreath product if ``G`` is an action; if the arity is
+          one and ``G`` is a permutation group, ``pi`` can be omitted
         - ``check`` -- boolean (default: ``True``); whether to check
           the dictionary input and the group action
 
@@ -829,6 +1269,27 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: a = lambda g, x: g(x)
             sage: M((X, a, 'left'), {0: list(W.domain())})
             X*X°
+
+        For several sorts, each `C_r`-block of the domain is assigned to
+        a sort.  The trivial subgroup of `W(2;1,1)` decomposes into the
+        product of the trivial species in each sort::
+
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+            sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+            sage: W = _wreath_young_subgroup(2, [1, 1])
+            sage: M(W.subgroup([]), {0: [1, 2], 1: [3, 4]})
+            X*Y
+            sage: M(W.subgroup([(1, 2), (3, 4)]), {0: [1, 2], 1: [3, 4]})
+            X°*Y°
+
+        The diagonal `C_2` is directly indecomposable, whence atomic::
+
+            sage: M(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+            {((1,2)(3,4),): ({1, 2}, {3, 4})}
+
+        TESTS::
+
+            sage: TestSuite(M(W.subgroup([(1, 2), (3, 4)]), {0: [1, 2], 1: [3, 4]})).run()
         """
         if parent(G) is self:
             raise ValueError("cannot reassign data to a molecular species")
@@ -851,33 +1312,61 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                                               self._arity, check=check)
             if len(stabilizers) > 1:
                 raise ValueError("action is not transitive")
-            G = stabilizers[0]
+            G, pi = stabilizers[0]
         if not isinstance(G, PermutationGroup_generic):
             raise ValueError(f"{G} must be a permutation group")
         _check_standard_domain(G, self._r)
+        if pi is None:
+            if self._arity == 1:
+                pi = {0: G.domain()}
+            elif G.degree() == 0:
+                pi = {}
+            else:
+                raise ValueError("the assignment of sorts to the domain elements must be provided")
+        elif not isinstance(pi, dict):
+            pi = dict(enumerate(pi))
+        if not set(pi).issubset(range(self._arity)):
+            raise ValueError(f"keys of pi (={pi.keys()}) must be in range({self._arity})")
+        if (sum(len(p) for p in pi.values()) != len(G.domain())
+                or set(chain.from_iterable(pi.values())) != set(G.domain())):
+            raise ValueError(f"values of pi (={pi.values()}) must partition the domain of G (={G.domain()})")
+        dompart = [sorted(pi.get(s, [])) for s in range(self._arity)]
 
         decomposition = _hyperoctahedral_disjoint_direct_product_decomposition(G, self._r)
         result = self.one()
         for comp in decomposition:
+            comp = sorted(comp)
+            comp_set = set(comp)
             H = _standardize_component(G, comp, self._r)
-            result *= self.gen(self._indices(H))
+            relabel = {p: i + 1 for i, p in enumerate(comp)}
+            pi_H = {}
+            for s in range(self._arity):
+                pts = [relabel[p] for p in dompart[s] if p in comp_set]
+                if pts:
+                    pi_H[s] = pts
+            result *= self.gen(self._indices(H, pi_H))
         return result
 
     def grading_set(self):
         r"""
         Return the grading set of ``self``.
 
+        This is the set of integer vectors whose length is the arity of
+        ``self``.
+
         EXAMPLES::
 
             sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
             sage: MolecularHyperoctahedralSpecies(2).grading_set()
-            Non negative integers
+            Integer vectors of length 1
+            sage: MolecularHyperoctahedralSpecies(2, "X, Y").grading_set()
+            Integer vectors of length 2
         """
-        return NonNegativeIntegers()
+        return IntegerVectors(length=self._arity)
 
     def subset(self, size):
         r"""
-        Return the set of molecular `r`-species of degree ``size``.
+        Return the set of molecular `r`-species of total degree ``size``.
 
         EXAMPLES::
 
@@ -885,12 +1374,19 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: M = MolecularHyperoctahedralSpecies(2)
             sage: len(M.subset(2))
             8
-        """
-        return self.graded_component(size)
 
-    def graded_component(self, n):
+            sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+            sage: len(M.subset(2))
+            21
+        """
+        result = Set()
+        for grade in IntegerVectors(size, length=self._arity):
+            result = result.union(self.graded_component(grade))
+        return result
+
+    def graded_component(self, grade):
         r"""
-        Return the set of molecular `r`-species of degree ``n``.
+        Return the set of molecular `r`-species of grade ``grade``.
 
         EXAMPLES::
 
@@ -905,6 +1401,13 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: M = MolecularHyperoctahedralSpecies(2)
             sage: [len(M.graded_component(n)) for n in range(1, 5)]
             [2, 8, 33, 193]
+
+        For several sorts the ambient group is the wreath Young
+        subgroup `W(r;n_1,\ldots,n_k)`::
+
+            sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+            sage: len(M.graded_component([1, 1]))
+            5
 
         Since the molecular species form the free commutative monoid on
         the atomic species, the atomic numbers can be recovered from the
@@ -926,7 +1429,13 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: [len(A.graded_component(n)) for n in range(1, 5)] == a
             True
         """
-        return Set([self(rep) for rep in _wreath_subgroup_classes(self._r, n)])
+        if not hasattr(grade, '__len__'):
+            grade = (grade,)
+        if len(grade) != self._arity:
+            raise ValueError("invalid degree")
+        grade = _check_grade(grade)
+        return Set([self(rep, _canonical_dompart(self._r, grade))
+                    for rep in _wreath_young_subgroup_classes(self._r, grade)])
 
     def _type1_substitute_molecular(self, M, molecules):
         r"""
@@ -973,7 +1482,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: M = MolecularHyperoctahedralSpecies(2)
             sage: Xo = M(_wreath_group(2, 1))
             sage: E2 = P(SymmetricGroup(2)).support()[0]
-            sage: G = M._type1_substitute_molecular(E2, [Xo]).permutation_group()
+            sage: G = M._type1_substitute_molecular(E2, [Xo]).permutation_group()[0]
             sage: G.order()
             8
         """
@@ -1010,7 +1519,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         # Embed the generators of each substituted molecule into
         # every occurrence of its sort.
         for i, block in enumerate(dompart):
-            K = molecules[i].permutation_group()
+            K, _ = molecules[i].permutation_group()
             for j in block:
                 shift = offsets[j] * r
                 for gen in K.gens():
@@ -1032,20 +1541,37 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             r"""
             Return the grade of ``self``.
 
+            This is the vector counting the `C_r`-blocks in each
+            sort.
+
             EXAMPLES::
 
                 sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
                 sage: M = MolecularHyperoctahedralSpecies(2)
                 sage: M(_wreath_group(2, 2).subgroup([(1, 2), (3, 4)])).grade()
-                2
+                [2]
+
+                sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: M(W.subgroup([]), {0: [1, 2], 1: [3, 4]}).grade()
+                [1, 1]
             """
-            return self.parent().grading_set()(
-                sum(n * a.degree() for a, n in self._monomial.items()))
+            P = self.parent()
+            S = P.grading_set()
+            mons = self._monomial
+            if not mons:
+                return S([0] * P._arity)
+            mc = [sum(n * a._mc[s] for a, n in mons.items())
+                  for s in range(P._arity)]
+            return S(mc)
 
         def degree(self):
             r"""
             Return the degree of ``self``.
+
+            This is the total number of `C_r`-blocks in its domain.
 
             EXAMPLES::
 
@@ -1090,11 +1616,14 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         @cached_method
         def permutation_group(self):
             r"""
-            Return a permutation group representing ``self``.
+            Return a permutation group representing ``self``, together
+            with the partition of its domain into sorts.
 
             The result acts on the standard domain `\{1, \ldots, rn\}`
             and is the direct product of the permutation groups of the
-            atomic factors of ``self``.
+            atomic factors of ``self``.  The points of each sort of
+            each factor are appended after the points of the same sort
+            contributed by previous factors.
 
             EXAMPLES::
 
@@ -1102,25 +1631,48 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
                 sage: M = MolecularHyperoctahedralSpecies(2)
                 sage: M(_wreath_group(2, 2).subgroup([(1, 2), (3, 4)])).permutation_group()
-                Permutation Group with generators [(3,4), (1,2)]
+                (Permutation Group with generators [(3,4), (1,2)], (frozenset({1, 2, 3, 4}),))
                 sage: M.one().permutation_group()
-                Permutation Group with generators [()]
+                (Permutation Group with generators [()], (frozenset(),))
+
+            For several sorts the domain partition records which points
+            belong to which sort::
+
+                sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: G, dompart = M(W.subgroup([(1, 2)]), {0: [1, 2], 1: [3, 4]}).permutation_group()
+                sage: G.order()
+                2
+                sage: dompart
+                (frozenset({1, 2}), frozenset({3, 4}))
             """
-            r = self.parent()._r
+            P = self.parent()
+            r = P._r
+            arity = P._arity
+            offset = [0] * arity
+            grade = [0] * arity
             gens = []
-            offset = 0
             for A, e in self._monomial.items():
-                H = A.permutation_group()
-                d = H.degree()
+                H = A.permutation_group()[0]
                 for _ in range(e):
+                    relabel = {}
+                    for s in range(arity):
+                        points = sorted(A._dompart[s])
+                        for i, p in enumerate(points):
+                            relabel[p] = offset[s] + i + 1
                     for gen in H.gens():
-                        cycles = [tuple(offset + p for p in cyc)
+                        cycles = [tuple(relabel[p] for p in cyc)
                                   for cyc in gen.cycle_tuples()]
                         cycles = [cyc for cyc in cycles if cyc]
                         if cycles:
                             gens.append(PermutationGroupElement(cycles))
-                    offset += d
-            return PermutationGroup(gens, domain=range(1, offset + 1))
+                    for s in range(arity):
+                        offset[s] += len(A._dompart[s])
+                        grade[s] += A._mc[s]
+            dompart = _canonical_dompart(r, tuple(grade))
+            return PermutationGroup(gens, domain=range(1, sum(offset) + 1)), dompart
+
 
 class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
     r"""
@@ -1135,6 +1687,8 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
 
     - ``base_ring`` -- a ring
     - ``r`` -- positive integer; the order of the cyclic group
+    - ``names`` -- an iterable of strings for the sorts of the
+      species (default: ``"X"``)
 
     EXAMPLES::
 
@@ -1164,10 +1718,20 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
         sage: (a * b).degree()
         3
 
+    For several sorts the generators are the degree one species in
+    each sort::
+
+        sage: P.<X, Y> = PolynomialHyperoctahedralSpecies(QQ, 2)
+        sage: W = _wreath_group(2, 1)
+        sage: P(W.subgroup([]), {0: [1, 2]}) * P(W, {1: [1, 2]})
+        X*Y°
+
     TESTS::
 
         sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
         sage: PolynomialHyperoctahedralSpecies(QQ, 2) is PolynomialHyperoctahedralSpecies(QQ, ZZ(2))
+        True
+        sage: PolynomialHyperoctahedralSpecies(QQ, 2) is PolynomialHyperoctahedralSpecies(QQ, ZZ(2), "X")
         True
         sage: PolynomialHyperoctahedralSpecies(QQ, 0)
         Traceback (most recent call last):
@@ -1175,7 +1739,7 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
         ValueError: r must be a positive integer
     """
     @staticmethod
-    def __classcall__(cls, base_ring, r):
+    def __classcall__(cls, base_ring, r, names="X"):
         r"""
         Normalize the arguments for unique representation.
 
@@ -1188,9 +1752,10 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
         r = ZZ(r)
         if r < 1:
             raise ValueError("r must be a positive integer")
-        return super().__classcall__(cls, base_ring, r)
+        names = normalize_names(-1, names)
+        return super().__classcall__(cls, base_ring, r, names)
 
-    def __init__(self, base_ring, r):
+    def __init__(self, base_ring, r, names):
         r"""
         Initialize the ring of polynomial `r`-species.
 
@@ -1199,13 +1764,14 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
             sage: P = PolynomialHyperoctahedralSpecies(ZZ, 2)
             sage: TestSuite(P).run()
+            sage: P2 = PolynomialHyperoctahedralSpecies(ZZ, 2, "X, Y")
+            sage: TestSuite(P2).run()
         """
         self._r = ZZ(r)
-        # currently there is only one sort; kept for future multisort support
-        self._arity = 1
+        self._arity = len(names)
         category = GradedAlgebrasWithBasis(base_ring).Commutative()
         CombinatorialFreeModule.__init__(self, base_ring,
-                                         basis_keys=MolecularHyperoctahedralSpecies(self._r),
+                                         basis_keys=MolecularHyperoctahedralSpecies(r, names),
                                          category=category,
                                          prefix='', bracket=False)
 
@@ -1218,12 +1784,47 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
             sage: PolynomialHyperoctahedralSpecies(ZZ, 3)
             Polynomial 3-species over Integer Ring
+            sage: PolynomialHyperoctahedralSpecies(ZZ, 3, "X, Y")
+            Polynomial 3-species in X, Y over Integer Ring
         """
-        return f"Polynomial {self._r}-species over {self.base_ring()}"
+        if self._arity == 1:
+            return f"Polynomial {self._r}-species over {self.base_ring()}"
+        names = self._indices._indices._names
+        return (f"Polynomial {self._r}-species in {', '.join(names)} "
+                f"over {self.base_ring()}")
+
+    def _first_ngens(self, n):
+        r"""
+        Used by the preparser for ``F.<x> = ...``.
+
+        We do not use the generic implementation of
+        :class:`sage.combinat.CombinatorialFreeModule`, because we do
+        not want to implement `gens`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: P.<X, Y> = PolynomialHyperoctahedralSpecies(QQ, 2)  # indirect doctest
+            sage: X.degree()
+            1
+            sage: X + 2*Y
+            X + 2*Y
+
+        Only the first ``n`` degree one species are returned::
+
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
+            sage: P._first_ngens(1)
+            (X,)
+            sage: P._first_ngens(2)
+            (X, Y)
+        """
+        singletons = [sorted(self._indices._indices.graded_component(grade), key=str)[0]
+                      for grade in IntegerVectors(1, length=self._arity)]
+        return tuple(self(a) for a in singletons[:n])
 
     def _element_constructor_(self, G, pi=None, check=True):
         r"""
-        Construct the polynomial `r`-species given by ``G``.
+        Construct the polynomial `r`-species with the given data.
 
         INPUT:
 
@@ -1239,9 +1840,11 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             action and a string ``'left'`` or ``'right'``; the side can
             be omitted, it is then assumed to be ``'right'``
 
-        - ``pi`` -- a dictionary mapping sorts to iterables whose union
-          is the domain of the acting wreath product; required when
-          ``G`` is an action
+        - ``pi`` -- a dictionary (or iterable) mapping sorts to
+          iterables whose union is the domain of ``G``, resp. the
+          domain of the acting wreath product if ``G`` is an action;
+          if the arity is one and ``G`` is a permutation group, ``pi``
+          can be omitted
         - ``check`` -- boolean (default: ``True``); whether to check
           the dictionary input and the group action
 
@@ -1271,6 +1874,17 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             sage: a = lambda g, x: g(x)
             sage: P((X, a, 'left'), {0: list(W.domain())})
             X*X°
+
+        For several sorts the assignment of the `C_r`-blocks to sorts
+        must be provided::
+
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
+            sage: W = _wreath_young_subgroup(2, [1, 1])
+            sage: P(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+            {((1,2)(3,4),): ({1, 2}, {3, 4})}
+            sage: P(W.subgroup([]), {0: [1, 2], 1: [3, 4]})
+            X*Y
 
         TESTS::
 
@@ -1309,12 +1923,12 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             stabilizers = _wreath_stabilizers(X, a, side, pi, self._r,
                                               self._arity, check=check)
             result = self.zero()
-            for H in stabilizers:
-                result += self.monomial(self._indices(H))
+            for H, pi_H in stabilizers:
+                result += self.monomial(self._indices(H, pi_H))
             return result
 
         if isinstance(G, PermutationGroup_generic):
-            M = self._indices(G)
+            M = self._indices(G, pi)
             return self._from_dict({M: ZZ.one()})
 
         raise ValueError(f"{G} must be an element of the base ring, a permutation "
@@ -1332,10 +1946,14 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             Polynomial 2-species over Rational Field
             sage: P.change_ring(ZZ) is P
             True
+            sage: P2 = PolynomialHyperoctahedralSpecies(ZZ, 2, "X, Y")
+            sage: P2.change_ring(QQ)
+            Polynomial 2-species in X, Y over Rational Field
         """
         if R is self.base_ring():
             return self
-        return PolynomialHyperoctahedralSpecies(R, self._r)
+        return PolynomialHyperoctahedralSpecies(R, self._r,
+                                                self._indices._indices._names)
 
     def degree_on_basis(self, m):
         r"""
