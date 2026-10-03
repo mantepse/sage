@@ -764,6 +764,14 @@ class LazyCombinatorialSpeciesElement(LazyCompletionGradedAlgebraElement):
         fP = self.parent()
         if len(args) != fP._arity:
             raise ValueError("arity of must be equal to the number of arguments provided")
+
+        # Henderson type 1 substitution of an ordinary species with
+        # r-species
+        from sage.rings.lazy_species_hyperoctahedral import (
+            LazyHyperoctahedralSpeciesElement, Type1CompositionSpeciesElement)
+        if any(isinstance(arg, LazyHyperoctahedralSpeciesElement) for arg in args):
+            return Type1CompositionSpeciesElement(self, *args)
+
         # Find a good parent for the result
         from sage.structure.element import get_coercion_model
         cm = get_coercion_model()
