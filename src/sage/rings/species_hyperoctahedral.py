@@ -497,7 +497,8 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
 
     def _rename(self, grade):
         r"""
-        Give the standard atomic `r`-species of unit grade their names.
+        Give the standard atomic `r`-species of the given grade their
+        names.
 
         For a unit grade the atomic `r`-species correspond to the
         divisors `d \mid r`: the stabilizer of the species `C_r / C_d`
@@ -506,6 +507,14 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         the extremal cases ``X = X@1`` and ``X° = X@r``, and with
         ``X`` for the unique species when `r = 1`.  Every sort receives
         the names obtained from its own name in this way.
+
+        If the grade has a single nonzero entry `n \geq 2` in sort
+        `s`, then the compositions `F(X@d)` of the classical species
+        `F` of degree `n`, cf.
+        :meth:`~sage.rings.species.AtomicSpecies._rename`, with the
+        atomic species `X@d` of unit grade in sort `s` are the atomic
+        `r`-species `C_d^n \rtimes H`, where `H` is the group of `F`;
+        they are named `F_n(X@d)` accordingly.
 
         EXAMPLES::
 
@@ -517,12 +526,32 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: A = AtomicHyperoctahedralSpecies(4, "X, Y")
             sage: sorted(A.graded_component([0, 1]), key=str)
             [Y, Y@2, Y°]
+
+            sage: A = AtomicHyperoctahedralSpecies(2)
+            sage: sorted(A.graded_component(2), key=str)
+            [E_2(X), E_2(X°), {((1,2)(3,4), (1,3)(2,4))}, {((1,2)(3,4),)}, {((1,4,2,3),)}]
+            sage: [a for a in sorted(A.graded_component(3), key=str) if a.get_custom_name()]
+            [C_3(X), C_3(X°), E_3(X), E_3(X°)]
+
+            sage: A = AtomicHyperoctahedralSpecies(4, "X, Y")
+            sage: [a for a in sorted(A.graded_component([0, 2]), key=str) if a.get_custom_name()]
+            [E_2(Y), E_2(Y@2), E_2(Y°)]
         """
-        if sum(grade) != 1:
+        if sum(grade) == 0:
             return
-        s = list(grade).index(1)
+        nonzero = [(s, n) for s, n in enumerate(grade) if n]
+        if len(nonzero) != 1:
+            return
+        s, n = nonzero[0]
+
+        # the atomic r-species X@d of unit grade in sort s
         W = _wreath_group(self._r, 1)
         cycle = W.gens()[0]
+        unit_grade = [0] * self._arity
+        unit_grade[s] = 1
+        dompart = _canonical_dompart(self._r, unit_grade)
+        atoms = {}
+        atom_names = {}
         for d in divisors(self._r):
             G = W.subgroup([cycle ** (self._r // d)])
             if d == 1:
@@ -531,8 +560,23 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 name = self._names[s] + "°"
             else:
                 name = f"{self._names[s]}@{d}"
-            self(G, _canonical_dompart(self._r, grade),
-                 check=False).rename(name)
+            atoms[d] = self(G, dompart, check=False)
+            atoms[d].rename(name)
+            atom_names[d] = name
+
+        if n == 1:
+            return
+
+        # the compositions F(X@d) of the classical species of degree n
+        # with X@d, computed with the type 1 substitution
+        from sage.rings.species import MolecularSpecies, _classical_species_groups
+        M = MolecularHyperoctahedralSpecies(self._r, self._names)
+        molecules = {d: M({atoms[d]: ZZ.one()}) for d in divisors(self._r)}
+        for name, H in _classical_species_groups(n):
+            F = MolecularSpecies(self._names[s])(H, {0: range(1, n + 1)})
+            for d in divisors(self._r):
+                molecule, = M._type1_substitute_molecular(F, [molecules[d]])._monomial
+                molecule.rename(f"{name}({atom_names[d]})")
 
     def _element_constructor_(self, G, pi=None, check=True):
         r"""
@@ -556,7 +600,7 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             sage: A = AtomicHyperoctahedralSpecies(2)
             sage: G = _wreath_group(2, 2)
             sage: A(G.subgroup([[(1, 3), (2, 4)]]))
-            {((1,3)(2,4),)}
+            E_2(X)
             sage: A(G.subgroup([(1, 2), (3, 4)]))
             Traceback (most recent call last):
             ...
@@ -564,8 +608,10 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
 
         TESTS::
 
+            The full wreath product `W(2,2)` is `E_2(X^\circ)`::
+
             sage: A(G)
-            {((3,4), (1,2), (1,3)(2,4))}
+            E_2(X°)
         """
         if parent(G) is self:
             if pi is None:
@@ -960,7 +1006,7 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
                 sage: A = AtomicHyperoctahedralSpecies(2)
                 sage: A(_wreath_group(2, 2).subgroup([[(1, 3), (2, 4)]]))
-                {((1,3)(2,4),)}
+                E_2(X)
 
                 sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
@@ -1220,7 +1266,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         The subgroup generated by the block interchange is atomic::
 
             sage: M(_wreath_group(2, 2).subgroup([[(1, 3), (2, 4)]]))
-            {((1,3)(2,4),)}
+            E_2(X)
 
         A single sign change acts on one block and fixes the other::
 
@@ -1438,7 +1484,18 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: G = PermutationGroup([(1, 2)], domain=[1, 2, 3])
             sage: E2AB = P(G, {0: [1, 2], 1: [3]}).support()[0]
             sage: M._type1_substitute_molecular(E2AB, [Xo, X])
-            X*{((3,4), (1,2), (1,3)(2,4))}
+            X*E_2(X°)
+
+        The target may be multisort; the sorts of the chunks are
+        determined by the substituted molecules::
+
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+            sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+            sage: G = _wreath_young_subgroup(2, [1, 1]).subgroup([[(1, 2), (3, 4)]])
+            sage: XY = M(G, {0: [1, 2], 1: [3, 4]})
+            sage: C3 = PolynomialSpecies(QQ, "X")(CyclicPermutationGroup(3)).support()[0]
+            sage: M._type1_substitute_molecular(C3, [XY]).grade()
+            [3, 3]
 
         TESTS:
 
@@ -1496,7 +1553,18 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                         gens.append(PermutationGroupElement(cycles))
 
         W = PermutationGroup(gens, domain=range(1, N * r + 1))
-        return self(W)
+
+        # the sort assignment: each chunk is filled with the
+        # corresponding molecule, whose points are assigned to sorts by
+        # its canonical layout
+        pi = {s: [] for s in range(self._arity)}
+        for j in range(1, n + 1):
+            K_dompart = molecules[sort_of[j]].permutation_group()[1]
+            shift = offsets[j] * r
+            for s in range(self._arity):
+                pi[s].extend(shift + p for p in K_dompart[s])
+
+        return self(W, pi)
 
     class Element(IndexedFreeAbelianMonoidElement):
         r"""
@@ -1612,12 +1680,35 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                 2
                 sage: dompart
                 (frozenset({1, 2}), frozenset({3, 4}))
+
+            An atom whose group acts nontrivially on both sorts, and a
+            product of such atoms, are laid out sort by sort::
+
+                sage: G, dompart = M(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]}).permutation_group()
+                sage: G, dompart
+                (Permutation Group with generators [(1,2)(3,4)], (frozenset({1, 2}), frozenset({3, 4})))
+                sage: F = M(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]}) ^ 2
+                sage: G, dompart = F.permutation_group()
+                sage: sorted(str(gen) for gen in G.gens())
+                ['(1,2)(5,6)', '(3,4)(7,8)']
+                sage: sorted(map(sorted, dompart))
+                [[1, 2, 3, 4], [5, 6, 7, 8]]
             """
             P = self.parent()
             r = P._r
             arity = P._arity
-            offset = [0] * arity
+
+            # the grade of self and the starting point of the points
+            # of each sort in the standard domain
             grade = [0] * arity
+            for A, e in self._monomial.items():
+                for s in range(arity):
+                    grade[s] += e * A._mc[s]
+            base = [0] * arity
+            for s in range(1, arity):
+                base[s] = base[s - 1] + r * grade[s - 1]
+
+            offset = [0] * arity
             gens = []
             for A, e in self._monomial.items():
                 H = A.permutation_group()[0]
@@ -1626,7 +1717,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                     for s in range(arity):
                         points = sorted(A._dompart[s])
                         for i, p in enumerate(points):
-                            relabel[p] = offset[s] + i + 1
+                            relabel[p] = base[s] + offset[s] + i + 1
                     for gen in H.gens():
                         cycles = [tuple(relabel[p] for p in cyc)
                                   for cyc in gen.cycle_tuples()]
@@ -1635,7 +1726,6 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                             gens.append(PermutationGroupElement(cycles))
                     for s in range(arity):
                         offset[s] += len(A._dompart[s])
-                        grade[s] += A._mc[s]
             dompart = _canonical_dompart(r, tuple(grade))
             return PermutationGroup(gens, domain=range(1, sum(offset) + 1)), dompart
 

@@ -100,6 +100,65 @@ def _SymmetricGroup(n):
     return _dis_cache[key][0]
 
 
+def _classical_species_groups(n):
+    r"""
+    Return the classical species of degree `n` together with their
+    traditional names.
+
+    These are the species `E_n` of sets, `C_n` of cyclic orders,
+    `P_n` of polygons, `Eo_n` of even sets and `Pb_n` of bicoloured
+    polygons, cf. :meth:`AtomicSpecies._rename`.
+
+    INPUT:
+
+    - ``n`` -- a nonnegative integer; the degree
+
+    OUTPUT:
+
+    A list of pairs ``(name, G)``, where ``name`` is a string such as
+    ``"E_4"`` and `G` is a permutation group of degree `n` acting on
+    `\{1, \ldots, n\}`.  The list is empty for `n < 2`.
+
+    EXAMPLES::
+
+        sage: from sage.rings.species import _classical_species_groups
+        sage: _classical_species_groups(1)
+        []
+        sage: _classical_species_groups(2)
+        [('E_2', Symmetric group of order 2! as a permutation group)]
+        sage: _classical_species_groups(3)
+        [('E_3', Symmetric group of order 3! as a permutation group),
+         ('C_3', Cyclic group of order 3 as a permutation group)]
+
+        sage: [(name, G.order()) for name, G in _classical_species_groups(4)]
+        [('E_4', 24), ('C_4', 4), ('P_4', 8), ('Eo_4', 12), ('Pb_4', 4)]
+        sage: [(name, G.order()) for name, G in _classical_species_groups(5)]
+        [('E_5', 120), ('C_5', 5), ('P_5', 10), ('Eo_5', 60)]
+    """
+    from sage.groups.perm_gps.permgroup import PermutationGroup
+    from sage.groups.perm_gps.permgroup_named import (AlternatingGroup,
+                                                      CyclicPermutationGroup,
+                                                      DihedralGroup)
+
+    result = []
+    if n >= 2:
+        result.append((f"E_{n}", _SymmetricGroup(n)))
+
+    if n >= 3:
+        result.append((f"C_{n}", CyclicPermutationGroup(n)))
+
+    if n >= 4:
+        result.append((f"P_{n}", DihedralGroup(n)))
+        result.append((f"Eo_{n}", AlternatingGroup(n)))
+
+    if n >= 4 and not n % 2:
+        gens = [[(i, n - i + 1) for i in range(1, n // 2 + 1)],
+                [(1, 2)] + [(i, n - i + 3) for i in range(3, n // 2 + 2)]]
+        result.append((f"Pb_{n}", PermutationGroup(gens)))
+
+    return result
+
+
 def _label_sets(arity, labels):
     r"""
     Return labels as a list of tuples.
@@ -844,12 +903,6 @@ class AtomicSpecies(UniqueRepresentation, Parent):
             sage: A(G.automorphism_group(edge_labels=True))
             Pb_8
         """
-        from sage.groups.perm_gps.permgroup import PermutationGroup
-        from sage.groups.perm_gps.permgroup_named import (AlternatingGroup,
-                                                          CyclicPermutationGroup,
-                                                          DihedralGroup,
-                                                          SymmetricGroup)
-
         for s in range(self._arity):
             pi = {s: range(1, n+1)}
             if n == 1:
@@ -860,22 +913,8 @@ class AtomicSpecies(UniqueRepresentation, Parent):
             else:
                 sort = f"({self._names[s]})"
 
-            if n >= 2:
-                self(_SymmetricGroup(n), pi, check=False).rename(f"E_{n}" + sort)
-
-            if n >= 3:
-                self(CyclicPermutationGroup(n), pi, check=False).rename(f"C_{n}" + sort)
-
-            if n >= 4:
-                self(DihedralGroup(n), pi, check=False).rename(f"P_{n}" + sort)
-
-            if n >= 4:
-                self(AlternatingGroup(n), pi, check=False).rename(f"Eo_{n}" + sort)
-
-            if n >= 4 and not n % 2:
-                gens = [[(i, n-i+1) for i in range(1, n//2 + 1)],
-                        [(1, 2)] + [(i, n - i + 3) for i in range(3, n//2 + 2)]]
-                self(PermutationGroup(gens), pi, check=False).rename(f"Pb_{n}" + sort)
+            for name, G in _classical_species_groups(n):
+                self(G, pi, check=False).rename(name + sort)
 
     def __contains__(self, x) -> bool:
         r"""
@@ -2815,15 +2854,15 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
             sage: E2 = P(SymmetricGroup(2))
             sage: E3 = P(SymmetricGroup(3))
             sage: E2(X)
-            {((1,3)(2,4),)}
+            E_2(X)
             sage: E2(X + Xo)
-            {((1,3)(2,4),)} + X*X° + {((3,4), (1,2), (1,3)(2,4))}
+            E_2(X) + X*X° + E_2(X°)
             sage: E2(X + 2*Xo)
-            {((1,3)(2,4),)} + 2*X*X° + 2*{((3,4), (1,2), (1,3)(2,4))} + X°^2
+            E_2(X) + 2*X*X° + 2*E_2(X°) + X°^2
             sage: E2(2*X)
-            2*{((1,3)(2,4),)} + X^2
+            2*E_2(X) + X^2
             sage: E2(2*Xo)
-            2*{((3,4), (1,2), (1,3)(2,4))} + X°^2
+            2*E_2(X°) + X°^2
 
         `E_2(X^\circ)` is the full wreath product `W(2,2)`::
 
@@ -2846,6 +2885,16 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
             sage: X1 = H1(_wreath_group(1, 1).subgroup([]))
             sage: E2(X1).support()[0].permutation_group()[0].order()
             2
+
+        The substituted species may be multisort::
+
+            sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
+            sage: H2 = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
+            sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
+            sage: X = M(_wreath_group(2, 1).subgroup([]), {0: [1, 2]})
+            sage: Y = M(_wreath_group(2, 1), {1: [1, 2]})
+            sage: E2(H2(X) + H2(Y))
+            E_2(Y°) + Y°*X + E_2(X)
         """
         from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
         P = self.parent()
