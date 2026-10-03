@@ -144,6 +144,11 @@ from sage.structure.unique_representation import (UniqueRepresentation,
 
 GAP_FAIL = libgap.eval('fail')
 
+# for each key (currently r, grade, order and orbit sizes) a list of
+# canonical representatives of directly indecomposable subgroups of
+# the wreath Young subgroup W(r; grade)
+_dis_cache = dict()
+
 
 @cached_function
 def _wreath_young_subgroup_classes(r, grade):
@@ -169,122 +174,6 @@ def _wreath_young_subgroup_classes(r, grade):
     """
     grade = _check_grade(grade)
     return _wreath_young_subgroup(r, grade).conjugacy_classes_subgroups()
-
-
-@cached_function
-def _wreath_young_subgroup_classes_by_order(r, grade):
-    r"""
-    Return the `W(r;` ``grade`` `)`-subgroup classes grouped by order.
-
-    EXAMPLES::
-
-        sage: from sage.rings.species_hyperoctahedral import _wreath_young_subgroup_classes_by_order
-        sage: d = _wreath_young_subgroup_classes_by_order(2, (2,))
-        sage: sorted(d)
-        [1, 2, 4, 8]
-        sage: [len(v) for k, v in sorted(d.items())]
-        [1, 3, 3, 1]
-    """
-    result = {}
-    for idx, rep in enumerate(_wreath_young_subgroup_classes(r, grade)):
-        result.setdefault(rep.order(), []).append((idx, rep))
-    return result
-
-
-@cached_function
-def _wreath_young_subgroup_class_id_to_index(r, grade):
-    r"""
-    Return the map from subgroup class representatives to their index.
-
-    The keys are the (object) identities of the representatives returned
-    by :func:`_wreath_young_subgroup_classes`; these objects are kept
-    alive by the cache of that function.
-
-    EXAMPLES::
-
-        sage: from sage.rings.species_hyperoctahedral import (
-        ....:     _wreath_young_subgroup_classes, _wreath_young_subgroup_class_id_to_index)
-        sage: d = _wreath_young_subgroup_class_id_to_index(2, (2,))
-        sage: len(d)
-        8
-        sage: all(d[id(rep)] == idx
-        ....:     for idx, rep in enumerate(_wreath_young_subgroup_classes(2, (2,))))
-        True
-    """
-    return {id(rep): idx
-            for idx, rep in enumerate(_wreath_young_subgroup_classes(r, grade))}
-
-
-def _canonical_wreath_subgroup_index(G, r, grade=None):
-    r"""
-    Return the index of the `W(r;` ``grade`` `)`-conjugacy class of ``G``.
-
-    The subgroup ``G`` must act on `\{1, \ldots, rn\}` with the standard
-    consecutive block system, where `n` is the total number of
-    `C_r`-blocks.  If ``grade`` is not provided, it is assumed that all
-    blocks belong to a single sort.
-
-    INPUT:
-
-    - ``G`` -- a permutation group
-    - ``r`` -- positive integer; the order of the cyclic group
-    - ``grade`` -- a tuple of nonnegative integers or ``None``
-      (default); the number of `C_r`-blocks in each sort
-
-    OUTPUT:
-
-    A pair ``(index, representative)``, where ``representative`` is the
-    (unique) representative of the `W(r;` ``grade`` `)`-conjugacy class
-    of ``G`` in :func:`_wreath_young_subgroup_classes`.
-
-    EXAMPLES::
-
-        sage: from sage.rings.species_hyperoctahedral import _canonical_wreath_subgroup_index
-        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
-        sage: W = _wreath_group(2, 2)
-        sage: G = W.subgroup([(1, 2)])
-        sage: idx, rep = _canonical_wreath_subgroup_index(G, 2)
-        sage: rep.is_subgroup(W)
-        True
-        sage: _canonical_wreath_subgroup_index(rep, 2)[0] == idx
-        True
-
-    For several sorts the ambient group is the wreath Young subgroup::
-
-        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
-        sage: W = _wreath_young_subgroup(2, [1, 1])
-        sage: G = W.subgroup([(1, 2)])
-        sage: idx, rep = _canonical_wreath_subgroup_index(G, 2, (1, 1))
-        sage: rep.is_subgroup(W)
-        True
-        sage: rep.gens()
-        ((1,2),)
-
-    A group which is not a subgroup of the ambient wreath product is
-    rejected::
-
-        sage: G = PermutationGroup([(1, 3)])
-        sage: _canonical_wreath_subgroup_index(G, 2, (2,))
-        Traceback (most recent call last):
-        ...
-        ValueError: Permutation Group with generators [(1,3)] is not conjugate to a subgroup of Permutation Group with generators [(3,4), (1,2), (1,3)(2,4)]
-    """
-    if grade is None:
-        grade = (G.degree() // r,)
-    else:
-        grade = _check_grade(grade)
-    W = _wreath_young_subgroup(r, grade)
-    W_gap = W.gap()
-    G_gap = G.gap()
-    classes = _wreath_young_subgroup_classes(r, grade)
-    by_id = _wreath_young_subgroup_class_id_to_index(r, grade)
-    if id(G) in by_id:
-        idx = by_id[id(G)]
-        return idx, classes[idx]
-    for idx, rep in _wreath_young_subgroup_classes_by_order(r, grade).get(G.order(), []):
-        if libgap.RepresentativeAction(W_gap, G_gap, rep.gap()) != GAP_FAIL:
-            return idx, rep
-    raise ValueError(f"{G} is not conjugate to a subgroup of {W}")
 
 
 def _canonical_dompart(r, grade):
@@ -676,7 +565,7 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         TESTS::
 
             sage: A(G)
-            {((1,2), (3,4), (1,3)(2,4))}
+            {((3,4), (1,2), (1,3)(2,4))}
         """
         if parent(G) is self:
             if pi is None:
@@ -906,6 +795,16 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 Traceback (most recent call last):
                 ...
                 ValueError: ((1,2),) is not directly indecomposable
+
+            A group which is not a subgroup of the wreath Young
+            subgroup is rejected.  Here the cyclic group of order
+            `4` does not respect the `C_2`-blocks::
+
+                sage: A = AtomicHyperoctahedralSpecies(2)
+                sage: A(CyclicPermutationGroup(4))
+                Traceback (most recent call last):
+                ...
+                ValueError: Cyclic group of order 4 as a permutation group is not a subgroup of Permutation Group with generators [(3,4), (1,2), (1,3)(2,4)]
             """
             r = parent._r
             _check_standard_domain(G, r)
@@ -916,18 +815,25 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             point_sort = {}
             for s, b in enumerate(dompart):
                 point_sort.update({p: s for p in b})
-            for blk in _wreath_blocks(r, G.degree() // r):
+            blocks = _wreath_blocks(r, G.degree() // r)
+            for blk in blocks:
                 s = point_sort.get(blk[0])
                 for p in blk:
                     if point_sort.get(p) != s:
                         raise ValueError(f"the assignment of sorts {dompart} "
                                          f"must be a union of C_{r}-blocks")
 
-            # every orbit of G must be contained in a single sort
+            # every orbit of G must be contained in a single sort; the
+            # orbits are grouped by sort, in decreasing order of size
+            orbits_by_sort = [[] for _ in range(len(dompart))]
             for orbit in G.orbits():
-                if not any(set(orbit).issubset(b) for b in dompart):
+                s = point_sort.get(orbit[0])
+                if s is None or not all(point_sort.get(p) == s for p in orbit):
                     raise ValueError(f"all elements of orbit {list(orbit)} "
                                      f"must have the same sort")
+                orbits_by_sort[s].append(orbit)
+            for orbits in orbits_by_sort:
+                orbits.sort(key=lambda o: (-len(o), min(o)))
 
             grade = tuple(len(b) // r for b in dompart)
 
@@ -944,13 +850,72 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                     if cycles:
                         gens.append(PermutationGroupElement(cycles))
                 G = PermutationGroup(gens, domain=range(1, G.degree() + 1))
+                orbits_by_sort = [[tuple(relabel[p] for p in o)
+                                   for o in orbits]
+                                  for orbits in orbits_by_sort]
 
-            idx, rep = _canonical_wreath_subgroup_index(G, r, grade)
-            key = (grade, idx)
+            G_gap = G.gap()
+            W = _wreath_young_subgroup(r, grade)
+            W_gap = W.gap()
+            if libgap.IsSubgroup(W_gap, G_gap) != True:
+                raise ValueError(f"{G} is not a subgroup of {W}")
+
+            def new_dis():
+                """
+                Return a representative of the conjugacy class of
+                ``G`` in the wreath Young subgroup.
+
+                Its `C_r`-blocks are ordered in such a way that blocks
+                touched by larger orbits have smaller numbers and it
+                has a small generating set.
+                """
+                # the image of each point: the C_r-blocks of each sort
+                # are ordered in such a way that blocks touched by
+                # larger orbits come first
+                pos = {}
+                for s, orbits in enumerate(orbits_by_sort):
+                    base = sum(grade[:s])
+                    placed = set()
+                    m = 0
+                    for o in orbits:
+                        for j in range(base, base + grade[s]):
+                            if j not in placed and any(p in o for p in blocks[j]):
+                                placed.add(j)
+                                for k, p in enumerate(blocks[j]):
+                                    pos[p] = (base + m) * r + k + 1
+                                m += 1
+                gens = []
+                for gen in G_gap.SmallGeneratingSet().sage():
+                    cycles = [tuple(pos[p] for p in cyc)
+                              for cyc in gen.cycle_tuples()]
+                    cycles = [cyc for cyc in cycles if len(cyc) > 1]
+                    if cycles:
+                        gens.append(PermutationGroupElement(cycles))
+                return PermutationGroup(gens, domain=range(1, G.degree() + 1))
+
+            # find the canonical representative of the conjugacy class
+            # of G in the wreath Young subgroup, or create it
+            key = (r, grade, G.order(),
+                   tuple(tuple(len(o) for o in orbits)
+                         for orbits in orbits_by_sort))
+            lookup_dis = _dis_cache.get(key)
+            if lookup_dis is None:
+                dis = new_dis()
+                _dis_cache[key] = [dis]
+            else:
+                for dis in lookup_dis:
+                    if libgap.RepresentativeAction(W_gap, G_gap,
+                                                   dis.gap()) != GAP_FAIL:
+                        break
+                else:
+                    dis = new_dis()
+                    lookup_dis.append(dis)
+
+            key = (grade, dis)
             if key in parent._cache:
                 return parent._cache[key]
             elm = WithPicklingByInitArgs.__classcall__(
-                cls, parent, rep, _canonical_dompart(r, grade))
+                cls, parent, dis, _canonical_dompart(r, grade))
             parent._cache[key] = elm
             return elm
 
@@ -1031,13 +996,14 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
                 sage: A = AtomicHyperoctahedralSpecies(2)
                 sage: A(_wreath_group(2, 1)).permutation_group()
-                (Subgroup generated by [(1,2)] of (Permutation Group with generators [(1,2)]), (frozenset({1, 2}),))
+                (Permutation Group with generators [(1,2)], (frozenset({1, 2}),))
 
                 sage: A = AtomicHyperoctahedralSpecies(2, "X, Y")
                 sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
                 sage: W = _wreath_young_subgroup(2, [1, 1])
                 sage: A(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]}).permutation_group()
-                (Subgroup generated by [(1,2)(3,4)] of (Permutation Group with generators [(3,4), (1,2)]), (frozenset({1, 2}), frozenset({3, 4})))
+                (Permutation Group with generators [(1,2)(3,4)],
+                 (frozenset({1, 2}), frozenset({3, 4})))
             """
             return self._dis, self._dompart
 
@@ -1472,7 +1438,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             sage: G = PermutationGroup([(1, 2)], domain=[1, 2, 3])
             sage: E2AB = P(G, {0: [1, 2], 1: [3]}).support()[0]
             sage: M._type1_substitute_molecular(E2AB, [Xo, X])
-            X*{((1,2), (3,4), (1,3)(2,4))}
+            X*{((3,4), (1,2), (1,3)(2,4))}
 
         TESTS:
 
