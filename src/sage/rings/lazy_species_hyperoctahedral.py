@@ -245,6 +245,94 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
                            for M, c in self[n].monomial_coefficients().items())
         return L(coefficient)
 
+    def structures(self, *labels):
+        r"""
+        Iterate over the structures on the given free `C_r`-set of labels.
+
+        The labels are given as one list of `C_r`-orbits per sort, each
+        orbit an iterable of exactly `r` labels in cyclic phase order;
+        the degree is the number of orbits.  See
+        :meth:`~sage.rings.species_hyperoctahedral.PolynomialHyperoctahedralSpecies.Element.structures`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: Xo = L(_wreath_group(2, 1))
+            sage: X = L(_wreath_group(2, 1).subgroup([]))
+            sage: list(Xo.structures([('a', 'b')]))
+            [(X°, (('a', 'b'),))]
+            sage: sorted((X + Xo).structures([('a', 'b')]), key=str)
+            [(X, (('a', 'b'),)), (X, (('b', 'a'),)), (X°, (('a', 'b'),))]
+
+            The number of structures agrees with `r^n n!` times the
+            coefficient of the generating series::
+
+            sage: E = LazyCombinatorialSpecies(QQ, "Z").Sets()
+            sage: sorted(E(Xo).structures([('a', 'b'), ('c', 'd'), ('e', 'f')]))
+            [(E_3(X°), (('a', 'b', 'c', 'd', 'e', 'f'),))]
+            sage: E(Xo).generating_series()[3]
+            1/48
+        """
+        yield from self[sum(map(len, labels))].structures(*labels)
+
+    def _test_structures(self, tester=None, max_size=4, **options):
+        r"""
+        Check that structures and generating series are consistent.
+
+        We check all structures with less than ``max_size`` orbits.
+
+        TESTS::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: Xo = L(_wreath_group(2, 1))
+            sage: X = L(_wreath_group(2, 1).subgroup([]))
+            sage: (X + Xo)._test_structures()
+            sage: (X*Xo)._test_structures()
+
+            Multisort species are checked for every vector of orbit
+            counts::
+
+            sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies, AtomicHyperoctahedralSpecies
+            sage: LXY = LazyHyperoctahedralSpecies(QQ, 2, "X, Y")
+            sage: MXY = MolecularHyperoctahedralSpecies(2, "X, Y")
+            sage: AXY = AtomicHyperoctahedralSpecies(2, "X, Y")
+            sage: W = _wreath_young_subgroup(2, [1, 1])
+            sage: d = AXY(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+            sage: LXY(MXY({d: 1}))._test_structures()
+        """
+        if tester is None:
+            tester = self._tester(**options)
+        P = self.parent()
+        r = int(P._internal_poly_ring.base_ring()._r)
+        for n in range(max_size):
+            if P._arity == 1:
+                labels = [[(i, j) for j in range(r)] for i in range(n)]
+                s = list(self.structures(labels))
+                tester.assertEqual(len(s), len(set(s)),
+                                   f"structures for {labels} are {s}, which is not a set")
+                coeff = self.generating_series()[n]
+                tester.assertEqual(len(s) / ZZ(r)**n / ZZ(n).factorial(), coeff,
+                                   f"the number of structures for {labels} is {len(s)}, "
+                                   f"but the generating series gives {coeff}")
+            else:
+                from sage.combinat.integer_vector import IntegerVectors
+                for shape in IntegerVectors(n, length=P._arity):
+                    labels = [[[(i, j, sort) for j in range(r)]
+                               for i in range(k)]
+                              for sort, k in enumerate(shape)]
+                    s = list(self.structures(*labels))
+                    tester.assertEqual(len(s), len(set(s)),
+                                       f"structures for {labels} are {s}, which is not a set")
+                    coeff = self.generating_series()[n].coefficient(list(shape))
+                    scale = ZZ.prod(ZZ(r)**k * ZZ(k).factorial() for k in shape)
+                    tester.assertEqual(len(s) / scale, coeff,
+                                       f"the number of structures for {labels} is {len(s)}, "
+                                       f"but the generating series gives {coeff}")
+
 
 class Type1CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
     r"""

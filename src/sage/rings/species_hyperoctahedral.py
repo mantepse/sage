@@ -109,7 +109,7 @@ AUTHORS:
 #                  https://www.gnu.org/licenses/
 # ****************************************************************************
 
-from itertools import chain
+from itertools import chain, product
 
 from sage.arith.misc import divisors
 from sage.categories.graded_algebras_with_basis import GradedAlgebrasWithBasis
@@ -119,6 +119,7 @@ from sage.categories.sets_with_grading import SetsWithGrading
 from sage.combinat.free_module import CombinatorialFreeModule
 from sage.combinat.integer_vector import IntegerVectors
 from sage.combinat.partition import Partitions
+from sage.combinat.set_partition_ordered import OrderedSetPartitions
 from sage.combinat.sf.sf import SymmetricFunctions
 from sage.groups.perm_gps.constructor import PermutationGroupElement
 from sage.groups.perm_gps.hyperoctahedral_group import (
@@ -362,6 +363,89 @@ def _check_standard_domain(G, r):
     W = _wreath_group(r, degree // r)
     if set(G.domain()) != set(W.domain()):
         raise ValueError(f"{G} must act on the standard domain {{1, ..., {degree}}}")
+
+
+def _sorted_orbit_list(block):
+    r"""
+    Return a sorted copy of a list of ``C_r``-orbits.
+
+    INPUT:
+
+    - ``block`` -- an iterable of orbits, each an iterable of labels
+
+    EXAMPLES::
+
+        sage: from sage.rings.species_hyperoctahedral import _sorted_orbit_list
+        sage: _sorted_orbit_list([(3, 4), (1, 2)])
+        [(1, 2), (3, 4)]
+        sage: _sorted_orbit_list([("a", 1), (1, "a")])
+        [('a', 1), (1, 'a')]
+    """
+    try:
+        return sorted(block)
+    except TypeError:
+        return sorted(block, key=str)
+
+
+def _orbit_label_sets(arity, r, labels):
+    r"""
+    Return labels as a list of per-sort tuples of orbits.
+
+    INPUT:
+
+    - ``arity`` -- the arity (number of sorts)
+
+    - ``r`` -- positive integer; the order of the cyclic group
+
+    - ``labels`` -- an iterable of ``arity`` iterables of orbits, each
+      orbit an iterable of exactly ``r`` labels in cyclic phase order
+
+    The orbits of each sort are returned as a sorted tuple of ``r``-tuples,
+    so that the first ``r`` labels of each sort form the first
+    `C_r`-orbit, etc.  The labels within an orbit keep their cyclic order.
+
+    EXAMPLES::
+
+        sage: from sage.rings.species_hyperoctahedral import _orbit_label_sets
+        sage: _orbit_label_sets(1, 2, [[[1, 2], [3, 4]]])
+        [((1, 2), (3, 4))]
+        sage: _orbit_label_sets(1, 2, [[[3, 4], [1, 2]]])
+        [((1, 2), (3, 4))]
+
+        The order within an orbit is the phase order and is kept::
+
+        sage: _orbit_label_sets(1, 2, [[[2, 1], [3, 4]]])
+        [((2, 1), (3, 4))]
+
+        TESTS::
+
+        sage: _orbit_label_sets(1, 2, [[[1, 2]], [[3, 4]]])
+        Traceback (most recent call last):
+        ...
+        ValueError: number of args must match arity of self
+        sage: _orbit_label_sets(1, 2, [[[1, 2, 3]]])
+        Traceback (most recent call last):
+        ...
+        ValueError: each orbit of labels must consist of exactly 2 labels, but [(1, 2, 3)] does not
+        sage: _orbit_label_sets(1, 2, [[[1, 1]]])
+        Traceback (most recent call last):
+        ...
+        ValueError: the labels of each sort must be distinct, but [(1, 1)] has duplicates
+    """
+    if len(labels) != arity:
+        raise ValueError("number of args must match arity of self")
+    result = []
+    for orbits in labels:
+        orbits = [tuple(orbit) for orbit in orbits]
+        if any(len(orbit) != r for orbit in orbits):
+            raise ValueError(f"each orbit of labels must consist of exactly "
+                             f"{r} labels, but {orbits} does not")
+        flat = [x for orbit in orbits for x in orbit]
+        if len(set(flat)) != len(flat):
+            raise ValueError(f"the labels of each sort must be distinct, "
+                             f"but {orbits} has duplicates")
+        result.append(tuple(_sorted_orbit_list(orbits)))
+    return result
 
 
 class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
@@ -1108,6 +1192,102 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
             """
             return True
 
+        def structures(self, *labels):
+            r"""
+            Iterate over the structures on the given free `C_r`-set of labels.
+
+            The labels are given as one list of `C_r`-orbits per sort,
+            each orbit an iterable of exactly `r` labels in cyclic phase
+            order.
+
+            This yields flat tuples of all labels, one representative per
+            coset of the stabilizer of ``self`` in the corresponding
+            wreath product `W(r; n)`.  The labels are ordered such that
+            the first `r` labels form the first `C_r`-orbit of the first
+            sort, etc.
+
+            EXAMPLES::
+
+            The cyclic singleton `X^\circ` has a single structure on
+            one `C_r`-orbit and none on more; the free singleton has one
+            structure per phase::
+
+                sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: A = AtomicHyperoctahedralSpecies(2)
+                sage: Xo = A(_wreath_group(2, 1))
+                sage: Xo
+                X°
+                sage: list(Xo.structures([('a', 'b')]))
+                [('a', 'b')]
+                sage: list(Xo.structures([('a', 'b'), ('c', 'd')]))
+                []
+                sage: X_free = A(_wreath_group(2, 1).subgroup([]))
+                sage: sorted(X_free.structures([('a', 'b')]))
+                [('a', 'b'), ('b', 'a')]
+
+            The number of structures of the set-like species `E_n(X^\circ)`
+            is one on any free `C_r`-set of `n` orbits::
+
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: E2Xo = A(_wreath_young_subgroup(2, [2]))
+                sage: E2Xo
+                E_2(X°)
+                sage: list(E2Xo.structures([('a', 'b'), ('c', 'd')]))
+                [('a', 'b', 'c', 'd')]
+                sage: list(A(_wreath_young_subgroup(2, [3])).structures([('a', 'b'), ('c', 'd'), ('e', 'f')]))
+                [('a', 'b', 'c', 'd', 'e', 'f')]
+
+            The number of structures is `|W(r; n)| / |L|`::
+
+                sage: a = A(_wreath_group(2, 2).subgroup([[(1, 2), (3, 4)]]))
+                sage: a
+                {((1,2)(3,4),)}
+                sage: sorted(a.structures([('a', 'b'), ('c', 'd')]))
+                [('a', 'b', 'c', 'd'), ('a', 'b', 'd', 'c'), ('c', 'd', 'a', 'b'), ('c', 'd', 'b', 'a')]
+                sage: a.permutation_group()[0].order()
+                2
+
+            Multisort species take one argument per sort, each a list of
+            orbits of that sort; the following atom acts as a simultaneous
+            flip on one orbit of each sort, so its two structures differ by
+            a flip of the labels of the second sort only::
+
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: AXY = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: a = AXY(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+                sage: a
+                {((1,2)(3,4),): ({1, 2}, {3, 4})}
+                sage: sorted(a.structures([('a', 'b')], [('c', 'd')]))
+                [('a', 'b', 'c', 'd'), ('a', 'b', 'd', 'c')]
+
+            TESTS::
+
+                sage: list(Xo.structures([('a', 'b')], [('c', 'd')]))
+                Traceback (most recent call last):
+                ...
+                ValueError: number of args must match arity of self
+                sage: list(Xo.structures([('a', 'b', 'c')]))
+                Traceback (most recent call last):
+                ...
+                ValueError: each orbit of labels must consist of exactly 2 labels, but [('a', 'b', 'c')] does not
+                sage: list(Xo.structures([('a', 'a')]))
+                Traceback (most recent call last):
+                ...
+                ValueError: the labels of each sort must be distinct, but [('a', 'a')] has duplicates
+            """
+            P = self.parent()
+            labels = _orbit_label_sets(P._arity, P._r, labels)
+            n = tuple(len(s) for s in labels)
+            if self._mc != n:
+                # wrong number of orbits
+                return
+            S = _wreath_young_subgroup(P._r, list(n))
+            l = [x for s in labels for o in s for x in o]
+            for rep in libgap.RightTransversal(S, self._dis):
+                yield tuple(S(rep)._act_on_list_on_position(l))
+
 
 class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
     r"""
@@ -1731,6 +1911,90 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                         offset[s] += len(A._dompart[s])
             dompart = _canonical_dompart(r, tuple(grade))
             return PermutationGroup(gens, domain=range(1, sum(offset) + 1)), dompart
+
+        def structures(self, *labels):
+            r"""
+            Iterate over the structures on the given free `C_r`-set of labels.
+
+            The labels are given as one list of `C_r`-orbits per sort,
+            each orbit an iterable of exactly `r` labels in cyclic phase
+            order, see :meth:`AtomicHyperoctahedralSpecies.Element.structures
+            <structures>`.
+
+            This yields tuples with one flat structure per atom, in the
+            order of the atoms in ``self``; the relabelling is such that
+            the first `C_r`-orbits correspond to the first factor in the
+            atomic decomposition, etc.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies, AtomicHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
+                sage: A = AtomicHyperoctahedralSpecies(2)
+                sage: M = MolecularHyperoctahedralSpecies(2)
+                sage: Xo = A(_wreath_group(2, 1))
+                sage: X_free = A(_wreath_group(2, 1).subgroup([]))
+
+            The product of two free singletons has eight structures::
+
+                sage: sorted(M({X_free: 2}).structures([('a', 'b'), ('c', 'd')]))
+                [(('a', 'b'), ('c', 'd')),
+                 (('a', 'b'), ('d', 'c')),
+                 (('b', 'a'), ('c', 'd')),
+                 (('b', 'a'), ('d', 'c')),
+                 (('c', 'd'), ('a', 'b')),
+                 (('c', 'd'), ('b', 'a')),
+                 (('d', 'c'), ('a', 'b')),
+                 (('d', 'c'), ('b', 'a'))]
+
+            The number of structures of a molecule is `|W(r; n)| / |L|`,
+            where `L` is the group of the molecule; `X^\circ \cdot
+            E_2(X^\circ)` has three structures on three orbits::
+
+                sage: E2Xo = A(_wreath_young_subgroup(2, [2]))
+                sage: m = M({Xo: 1, E2Xo: 1})
+                sage: m
+                X°*E_2(X°)
+                sage: sorted(m.structures([('a', 'b'), ('c', 'd'), ('e', 'f')]))
+                [(('a', 'b'), ('c', 'd', 'e', 'f')),
+                 (('c', 'd'), ('a', 'b', 'e', 'f')),
+                 (('e', 'f'), ('a', 'b', 'c', 'd'))]
+                sage: m.permutation_group()[0].order()
+                16
+
+            A molecule has no structures on the wrong number of orbits,
+            and a multisort molecule takes one list of orbits per sort::
+
+                sage: list(M({Xo: 2}).structures([('a', 'b'), ('c', 'd'), ('e', 'f')]))
+                []
+                sage: AXY = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: MXY = MolecularHyperoctahedralSpecies(2, "X, Y")
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: d = AXY(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+                sage: sorted(MXY({d: 1}).structures([('a', 'b')], [('c', 'd')]))
+                [(('a', 'b', 'c', 'd'),), (('a', 'b', 'd', 'c'),)]
+                sage: list(MXY({d: 1}).structures([('a', 'b')]))
+                Traceback (most recent call last):
+                ...
+                ValueError: number of args must match arity of self
+            """
+            P = self.parent()
+            labels = _orbit_label_sets(P._arity, P._r, labels)
+            atoms = [a for a, n in self._monomial.items() for _ in range(n)]
+            sizes = [a._mc for a in atoms]
+            try:
+                # raises if the sizes do not match the number of labels
+                dissections = [OrderedSetPartitions(list(l), [mc[i] for mc in sizes])
+                               for i, l in enumerate(labels)]
+            except ValueError:
+                return
+            for d in product(*dissections):
+                # d[i][j] is the set of orbits of sort i given to atom j;
+                # sort each block, since the orbit order is positional data
+                yield from product(*[
+                    a.structures(*[_sorted_orbit_list(d[i][j])
+                                   for i in range(P._arity)])
+                    for j, a in enumerate(atoms)])
 
         def _type2_substitute_molecular(self, molecules):
             r"""
@@ -3119,3 +3383,57 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
                         result += c * H.monomial(
                             M._type2_substitute_molecular(substituted))
             return result
+
+        def structures(self, *labels):
+            r"""
+            Iterate over the structures on the given free `C_r`-set of labels.
+
+            The labels are given as one list of `C_r`-orbits per sort,
+            each orbit an iterable of exactly `r` labels in cyclic phase
+            order, see :meth:`AtomicHyperoctahedralSpecies.Element.structures
+            <structures>`.
+
+            This yields pairs consisting of a molecular `r`-species and a
+            structure for it, and triples with an additional index between
+            `0` and the coefficient of the molecule, if that coefficient is
+            larger than one.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: Xo = P(_wreath_group(2, 1))
+                sage: X = P(_wreath_group(2, 1).subgroup([]))
+                sage: f = Xo + 2*X
+                sage: sorted(f.structures([('a', 'b')]), key=str)
+                [(X, (('a', 'b'),), 0),
+                 (X, (('a', 'b'),), 1),
+                 (X, (('b', 'a'),), 0),
+                 (X, (('b', 'a'),), 1),
+                 (X°, (('a', 'b'),))]
+
+                sage: E2Xo = P(_wreath_young_subgroup(2, [2]))
+                sage: list((Xo + E2Xo).structures([('a', 'b'), ('c', 'd')]))
+                [(E_2(X°), (('a', 'b', 'c', 'd'),))]
+
+            TESTS::
+
+                sage: list((-Xo).structures([('a', 'b')]))
+                Traceback (most recent call last):
+                ...
+                NotImplementedError: only implemented for proper non-virtual species
+            """
+            labels = _orbit_label_sets(self.parent()._arity,
+                                       self.parent()._r, labels)
+            for M, c in self.monomial_coefficients().items():
+                if c not in ZZ or c < 0:
+                    raise NotImplementedError("only implemented for proper "
+                                              "non-virtual species")
+                if c == 1:
+                    for s in M.structures(*labels):
+                        yield M, s
+                else:
+                    for e, s in cartesian_product([range(c),
+                                                    M.structures(*labels)]):
+                        yield M, s, e
