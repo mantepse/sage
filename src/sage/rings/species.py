@@ -2561,11 +2561,41 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
 
         The `k`-sort species ``self`` should be homogeneous.
 
+        The entries of `multiplicities` are elements of the base ring.  They
+        are weights, not necessarily integer multiplicities.  The unweighted
+        composition with the corresponding singleton species is computed first;
+        the result is then combined by a Hadamard product with the exponential
+        species
+
+        .. MATH::
+
+            \prod_i E\left(\sum_j m_{i,j} X_{i,j}\right).
+
+        Thus the usual lambda-ring structure of the base ring is used.  In
+        particular, if `q` has lambda degree one, then
+
+        .. MATH::
+
+            \psi_n(q) = q^n.
+
+        Consequently, for example,
+
+        .. MATH::
+
+            E((1+q)X)
+              = 1 + (1+q)X
+                + (1+q^2)E_2
+                + (q+q^2)XE_2
+                + \cdots
+
         INPUT:
 
         - ``names`` -- the (flat) list of names of the result
-        - ``multiplicities`` -- a (flat) list of constants, of the
-          same length as ``names``
+
+        - ``multiplicities`` -- a (flat) list of elements of the base
+          ring, of the same length as `names`; these are the weights
+          of the singleton species
+
         - ``degrees`` -- a `k`-tuple of compositions `c_1, \ldots,
           c_k`, such that the size of `c_i` is the degree of ``self``
           in sort `i`, and the total length of the compositions is
@@ -2611,9 +2641,17 @@ class PolynomialSpeciesElement(CombinatorialFreeModule.Element):
             sage: F._compose_with_weighted_singletons(["X0", "X1", "Y0"], [1, 1, 1], [[1, 1], [2]])
             X0*X1*E_2(Y0) + 2*X0*X1*Y0^2
 
-            sage: Q.<X0, X1, Y0> = PolynomialSpecies(QQ)
-            sage: F(X0 + X1, Y0)
-            E_2(X0)*E_2(Y0) + X0^2*Y0^2 + X0*X1*E_2(Y0) + 2*X0*X1*Y0^2 + E_2(X1)*E_2(Y0) + X1^2*Y0^2
+        The weights may be indeterminates in the base ring.  For example,
+        writing `R.<q> = QQ[]`::
+
+            sage: R.<q> = QQ[]
+            sage: P = PolynomialSpecies(R, ["X"])
+            sage: E3 = P(SymmetricGroup(3))
+            sage: E3._compose_with_weighted_singletons(["X"], [1+q], [[3]])
+            (q^3+1)*E_3 + (q^2+q)*X*E_2
+
+        This is the lambda-ring interpretation of the weight `1+q`,
+        treating `q` as a degree one element.
 
         TESTS::
 
