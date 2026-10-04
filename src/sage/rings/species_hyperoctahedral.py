@@ -114,6 +114,7 @@ from itertools import chain
 from sage.arith.misc import divisors
 from sage.categories.graded_algebras_with_basis import GradedAlgebrasWithBasis
 from sage.categories.monoids import Monoids
+from sage.categories.sets_cat import cartesian_product
 from sage.categories.sets_with_grading import SetsWithGrading
 from sage.combinat.free_module import CombinatorialFreeModule
 from sage.combinat.integer_vector import IntegerVectors
@@ -1763,7 +1764,8 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             INPUT:
 
             - ``molecules`` -- a list of ordinary molecular species, one
-              for each sort of ``self``; each must have positive degree
+              for each sort of ``self``; each must be unisort and have
+              positive degree
 
             OUTPUT: an element of the unisort
             :class:`MolecularHyperoctahedralSpecies` with the same `r`
@@ -1825,7 +1827,10 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                 sage: E2h._type2_substitute_molecular([E2o]) == MolecularHyperoctahedralSpecies(1)(G)
                 True
 
-            Check the number of molecules, their type and their degree::
+            Check the number of molecules, their type and their degree.
+            Constant terms, that is, molecules of degree zero, are not
+            supported, since the substituted structures live on the
+            nonempty blocks of a partition::
 
                 sage: Xo._type2_substitute_molecular([E2, E2])
                 Traceback (most recent call last):
@@ -1839,6 +1844,12 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                 Traceback (most recent call last):
                 ...
                 ValueError: all molecules must have positive degree
+                sage: Mxy = MolecularSpecies("X, Y")
+                sage: Y2 = Mxy(SymmetricGroup(2), {0: [], 1: [1, 2]})
+                sage: Xo._type2_substitute_molecular([Y2])
+                Traceback (most recent call last):
+                ...
+                ValueError: all molecules must be unisort
             """
             from sage.rings.species import MolecularSpecies
 
@@ -1851,6 +1862,8 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                                  "molecular species")
             if any(sum(M.grade()) == 0 for M in molecules):
                 raise ValueError("all molecules must have positive degree")
+            if any(M.parent()._arity != 1 for M in molecules):
+                raise ValueError("all molecules must be unisort")
 
             r = self.parent()._r
             L, _ = self.permutation_group()
@@ -2845,3 +2858,188 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             right = left.parent()._exponential(multiplicities,
                                                list(chain.from_iterable(args)))
             return left.hadamard_product(right)
+
+        def __call__(self, *args):
+            r"""
+            Return the type `2` substitution of ``args`` into ``self``.
+
+            This implements the composition `F \circ_2 (G_1, \ldots,
+            G_k)` of [Henderson2004]_, Equation (4.8), where
+            ``self`` is a `C_r`-equivariant species and each `G_i` is an
+            ordinary unisort species.
+
+            The args are required to be unisort because the composition
+            is defined in [Henderson2004]_ and [Braunsteiner2010]_ by
+            attaching ordinary structures to the blocks of a
+            `C_r`-stable partition, and these references do not treat
+            multisort inner species.  We do not know of an obstruction to
+            multisort args, for which the composite would inherit their
+            sorts as in the ordinary composition of species
+            (:class:`~sage.rings.species.PolynomialSpecies`), but leave
+            this for future work.
+
+            The result is a unisort `C_r`-equivariant species over the
+            base ring of ``self``; the coefficients of the args have to
+            coerce into it.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies, MolecularHyperoctahedralSpecies
+                sage: from sage.rings.species import PolynomialSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
+                sage: PoX = PolynomialSpecies(QQ, "X")
+                sage: X = PoX(SymmetricGroup(1))
+                sage: E2 = PoX(SymmetricGroup(2))
+                sage: E3 = PoX(SymmetricGroup(3))
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+
+            Substituting `E_2` into the cyclic singleton `X^\circ` gives
+            the cyclic composition; substituting into the free singleton
+            forgets the `C_r`-action of the inner orbits.  The atoms are
+            only canonical up to the choice of generators, so we list
+            the orders of the molecular groups where the display would
+            depend on that choice::
+
+                sage: Xo = P(_wreath_group(2, 1))
+                sage: Xo(E2)
+                {((1,2)(3,4), (1,3)(2,4))}
+                sage: [(M.permutation_group()[0].order(), c) for M, c in Xo(E3)]
+                [(12, 1)]
+                sage: X_free = P(_wreath_group(2, 1).subgroup([]))
+                sage: X_free(E2)
+                E_2(X)
+                sage: X_free(X + X^2)
+                X + X^2
+
+            Substituting `2 E_2` into the set-like species `E_2(X^\circ)`
+            of [Henderson2004]_, Example 3.8::
+
+                sage: E2Xo = P(_wreath_young_subgroup(2, [2]))
+                sage: sorted((M.permutation_group()[0].order(), c) for M, c in E2Xo(2*E2))
+                [(16, 1), (32, 2)]
+
+            Weighted species are supported, see Equation (4.8) of
+            [Henderson2004]_ and [Braunsteiner2010]_, Definition 4.1.3::
+
+                sage: R.<q> = QQ[]
+                sage: PoXq = PolynomialSpecies(R, "X")
+                sage: Pq = PolynomialHyperoctahedralSpecies(R, 2)
+                sage: E2Xo_q = Pq(_wreath_young_subgroup(2, [2]))
+                sage: E2Xo_q((1+q)*PoXq(SymmetricGroup(1)))
+                (q^2+1)*E_2(X°) + q*X°^2
+
+            Substitution is linear in the outer species and each sort of a
+            multisort species can be substituted with its own species; the
+            two sorts of `E_2(X^\circ, Y^\circ)` below carry `E_2` and
+            `E_3`-structures::
+
+                sage: PXY = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
+                sage: MXY = MolecularHyperoctahedralSpecies(2, "X, Y")
+                sage: W22 = _wreath_young_subgroup(2, [2])
+                sage: A = PXY(MXY(W22, {0: [1, 2, 3, 4]}))
+                sage: B = PXY(MXY(W22, {1: [1, 2, 3, 4]}))
+                sage: sorted((tuple(M.grade()), M.permutation_group()[0].order())
+                ....:     for M, c in (A + B)(E2, E3))
+                [((4,), 32), ((6,), 288)]
+
+            For `r = 1` the result agrees with the ordinary composition of
+            species::
+
+                sage: P1 = PolynomialHyperoctahedralSpecies(QQ, 1)
+                sage: P1(CyclicPermutationGroup(4))(E2)
+                {((7,8), (1,3,5,7)(2,4,6,8))}
+                sage: C4 = PoX(CyclicPermutationGroup(4))
+                sage: C4(E2)
+                {((7,8), (1,3,5,7)(2,4,6,8))}
+
+            Substituting the singleton `X` forgets the sorts, and a zero
+            argument annihilates all structures using it::
+
+                sage: E2Xo(X)
+                E_2(X°)
+                sage: (Xo + E2Xo)(X)
+                X° + E_2(X°)
+                sage: (Xo + E2Xo)(PoX.zero())
+                0
+
+            Check the case of arity zero::
+
+                sage: P0 = PolynomialHyperoctahedralSpecies(QQ, 2, [])
+                sage: P0.one()()
+                1
+                sage: (5*P0.one())()
+                5
+
+            TESTS::
+
+                sage: E2Xo()
+                Traceback (most recent call last):
+                ...
+                ValueError: number of args must match arity of self
+                sage: E2Xo(2)
+                Traceback (most recent call last):
+                ...
+                ValueError: all args must be ordinary polynomial species
+                sage: E2Xo(E2, E2)
+                Traceback (most recent call last):
+                ...
+                ValueError: number of args must match arity of self
+                sage: PoXY = PolynomialSpecies(QQ, "X, Y")
+                sage: X2 = PoXY(SymmetricGroup(1), {0: [1]})
+                sage: Y2 = PoXY(SymmetricGroup(1), {1: [1]})
+                sage: E2Xo(X2 * Y2)
+                Traceback (most recent call last):
+                ...
+                ValueError: all args must be unisort
+                sage: A(E2, X2 * Y2)
+                Traceback (most recent call last):
+                ...
+                ValueError: all args must have the same parent
+                sage: E2Xo(PoX.one())
+                Traceback (most recent call last):
+                ...
+                ValueError: all args must have positive degree
+            """
+            from sage.rings.species import PolynomialSpecies
+
+            P = self.parent()
+            if len(args) != P._arity:
+                raise ValueError("number of args must match arity of self")
+            if not all(isinstance(arg, PolynomialSpecies.Element)
+                       for arg in args):
+                raise ValueError("all args must be ordinary polynomial species")
+            if len(set(arg.parent() for arg in args)) > 1:
+                raise ValueError("all args must have the same parent")
+            if args and args[0].parent()._arity != 1:
+                raise ValueError("all args must be unisort")
+            if any(sum(M.grade()) == 0 for g in args for M, _ in g):
+                raise ValueError("all args must have positive degree")
+
+            r = P._r
+            H = PolynomialHyperoctahedralSpecies(P.base_ring(), r)
+            if not self.support():
+                return H.zero()
+            if P._arity == 0:
+                return H.sum_of_terms((H.one(), c) for _, c in self)
+
+            arg_terms = [sorted(g, key=lambda x: x[0].grade()) for g in args]
+            multiplicities = list(chain.from_iterable(
+                [[c for _, c in g] for g in arg_terms]))
+            substituted = list(chain.from_iterable(
+                [[M for M, _ in g] for g in arg_terms]))
+            F_degrees = sorted(set(M.grade() for M, _ in self))
+            names = ["X%s" % i for i in range(len(substituted))]
+
+            result = H.zero()
+            for mc in F_degrees:
+                F = P.sum_of_terms((M, c) for M, c in self if M.grade() == mc)
+                for degrees in cartesian_product(
+                        [IntegerVectors(d, length=len(arg))
+                         for d, arg in zip(mc, arg_terms)]):
+                    FX = F._compose_with_weighted_singletons(names,
+                                                             multiplicities,
+                                                             degrees)
+                    for M, c in FX:
+                        result += c * H.monomial(
+                            M._type2_substitute_molecular(substituted))
+            return result
