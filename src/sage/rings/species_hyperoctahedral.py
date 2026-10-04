@@ -2141,3 +2141,186 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
                 True
             """
             return self.is_molecular() and self.support()[0].is_atomic()
+
+        def _compose_with_singletons(self, names, args):
+            r"""
+            Return the type 2 substitution of ``self`` with sums of
+            singleton species.
+
+            This is the analogue for `r`-species of Exercise 2.6.16 in
+            [BLL1998]_, using the second kind of substitution of
+            [Henderson2004]_, (4.8).  The homogeneous `k`-sort
+            `r`-species ``self`` is substituted with the sums of
+            singleton species `X_{1,1}+\cdots+X_{1,m_1},\ldots,
+            X_{k,1}+\cdots+X_{k,m_k}` and the result is expanded into
+            multisort molecular `r`-species.
+
+            For a molecular term `X_1^{d_1}\cdots X_k^{d_k}/L` of
+            ``self`` and compositions `e^{(i)} = (e_{i,1},\ldots,e_{i,m_i})`
+            of the `d_i`, let `E = (e_{i,j})`, let `W(r;E)` be the
+            corresponding wreath Young subgroup and let
+            `\mathbf d = (d_1,\ldots,d_k)`.  The inner sum of the
+            expansion is
+
+            .. MATH::
+
+                \sum_{\tau\in W(r;E)\backslash W(r;\mathbf d)/L}
+                \frac{\prod_{i,j} X_{i,j}^{e_{i,j}}}
+                     {W(r;E)\cap\tau L\tau^{-1}},
+
+            exactly as in the ordinary case: the isomorphism classes of
+            the substituted structures on the standard graded `C_r`-set
+            of grade `E` are indexed by the double cosets, the stabilizer
+            of the structure corresponding to `\tau` being
+            `W(r;E)\cap\tau L\tau^{-1}`.
+
+            INPUT:
+
+            - ``names`` -- the (flat) list of the names of the sorts of
+              the result, whose length is the total number of parts of
+              the compositions in ``args``
+
+            - ``args`` -- a sequence of `k` compositions, where `k` is
+              the arity of ``self``.  The parts of the `i`-th
+              composition sum to the grade of ``self`` in sort `i` and
+              count `C_r`-orbits.
+
+            OUTPUT: the polynomial `r`-species
+
+            ``self(X_{1,1}+\cdots+X_{1,m_1},...,X_{k,1}+\cdots+X_{k,m_k})``
+
+            in the sorts given by ``names``.
+
+            EXAMPLES:
+
+            Substituting `X+Y` into `E_2(X)`, whose group interchanges
+            the two `C_2`-orbits, yields the free species `X\cdot Y`::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: W = _wreath_group(2, 2)
+                sage: E2X = P(W.subgroup([[(1, 3), (2, 4)]]))
+                sage: E2X._compose_with_singletons(["X", "Y"], [[1, 1]])
+                X*Y
+
+            Substituting `X+Y` into `X^{\circ 2}` yields two copies of
+            `X^\circ Y^\circ`: either of the two `C_2`-orbits may
+            carry the `X`-structure::
+
+                sage: P(W.subgroup([(1, 2), (3, 4)]))._compose_with_singletons(["X", "Y"], [[1, 1]])
+                2*X°*Y°
+
+            Compositions with empty parts are allowed::
+
+                sage: E2X._compose_with_singletons(["X", "Y"], [[2, 0]])
+                E_2(X)
+
+            The molecular terms of a polynomial species are expanded
+            separately::
+
+                sage: (E2X + P(W.subgroup([(1, 2), (3, 4)])))._compose_with_singletons(["X", "Y"], [[1, 1]])
+                X*Y + 2*X°*Y°
+
+            Each sort of a multisort species is refined separately.
+            Here the sort `X` of `E_2(X)\cdot Y^\circ` is split into
+            `X_1` and `X_2`::
+
+                sage: P2 = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
+                sage: E2XYo = P2(W.subgroup([[(1, 3), (2, 4)]]), {0: [1, 2, 3, 4], 1: []})
+                sage: E2XYo *= P2(_wreath_group(2, 1), {0: [], 1: [1, 2]})
+                sage: E2XYo._compose_with_singletons(["X1", "X2", "Y"], [[1, 1], [1]])
+                X1*X2*Y°
+
+            For `r = 1` the result agrees with the ordinary
+            substitution of Exercise 2.6.16 in [BLL1998]_::
+
+                sage: P1 = PolynomialHyperoctahedralSpecies(QQ, 1)
+                sage: C4 = P1(CyclicPermutationGroup(4))
+                sage: F1 = C4._compose_with_singletons(["X", "Y"], [[2, 2]]); F1
+                X^2*Y^2 + {((1,2)(3,4),): ({1, 2}, {3, 4})}
+
+                sage: from sage.rings.species import PolynomialSpecies
+                sage: Po = PolynomialSpecies(QQ, "X")
+                sage: F = Po(CyclicPermutationGroup(4))._compose_with_singletons(["X", "Y"], [[2, 2]])
+                sage: sorted(str(M.permutation_group()) for M in F1.support()) == sorted(str(M.permutation_group()) for M in F.support())
+                True
+
+            TESTS::
+
+                sage: P.one()._compose_with_singletons(["X"], [[0]])
+                1
+                sage: P.zero()._compose_with_singletons(["X"], [[0]])
+                0
+
+                sage: E2X._compose_with_singletons(["X", "Y"], [[1], [1]])
+                Traceback (most recent call last):
+                ...
+                ValueError: the number of compositions should be the arity of self
+                sage: E2X._compose_with_singletons(["X"], [[1, 1]])
+                Traceback (most recent call last):
+                ...
+                ValueError: the total length of the compositions must match the number of names
+                sage: E2X._compose_with_singletons(["X", "Y"], [[1, 2]])
+                Traceback (most recent call last):
+                ...
+                ValueError: the size of the i-th composition should be the grade of self in sort i
+                sage: (E2X + P(_wreath_group(2, 1).subgroup([])))._compose_with_singletons(["X", "Y"], [[1, 1]])
+                Traceback (most recent call last):
+                ...
+                ValueError: self should be homogeneous with respect to all sorts
+                sage: P.zero()._compose_with_singletons(["X"], [[1]])
+                Traceback (most recent call last):
+                ...
+                ValueError: the size of the i-th composition should be the grade of self in sort i, which is zero
+            """
+            P = self.parent()
+            r = P._r
+            names = normalize_names(-1, names)
+            if len(args) != P._arity:
+                raise ValueError("the number of compositions should be the arity of self")
+            if sum(len(c) for c in args) != len(names):
+                raise ValueError("the total length of the compositions must match the number of names")
+            Q = PolynomialHyperoctahedralSpecies(P.base_ring(), r, names)
+
+            grades = set(M.grade() for M in self.support())
+            if len(grades) > 1:
+                raise ValueError("self should be homogeneous with respect to all sorts")
+            if not grades:
+                if any(sum(c) for c in args):
+                    raise ValueError("the size of the i-th composition should be "
+                                     "the grade of self in sort i, which is zero")
+                return Q.zero()
+            mc = next(iter(grades))
+            if not all(sum(c) == d for c, d in zip(args, mc)):
+                raise ValueError("the size of the i-th composition should be the grade of self in sort i")
+
+            comp = list(chain.from_iterable(args))
+            # the group of colour preserving relabellings of the
+            # standard domain, together with the assignment of its
+            # C_r-orbits to the sorts of the result
+            S_down = _wreath_young_subgroup(r, comp)
+            dompart = _canonical_dompart(r, comp)
+            domain = range(1, r * sum(comp) + 1)
+            # the group of sort preserving relabellings of the
+            # standard graded r-set of grade mc
+            S_up = _wreath_young_subgroup(r, mc)
+
+            result = Q.zero()
+            for M, c in self:
+                # the group of M acts on the standard graded r-set of
+                # grade mc, its sorts being consecutive
+                H, _ = M.permutation_group()
+                taus = libgap.DoubleCosetRepsAndSizes(S_up, S_down, H)
+
+                # sum over double coset representatives: the group of
+                # the coloured structure with representative tau is the
+                # intersection tau H tau^-1 n S_down
+                summand = Q.zero()
+                for tau, _ in taus:
+                    K = libgap.Intersection(libgap.ConjugateGroup(H, tau.Inverse()),
+                                           S_down)
+                    summand += Q(PermutationGroup(gap_group=K, domain=domain),
+                                 dompart)
+                result += c * summand
+            return result
