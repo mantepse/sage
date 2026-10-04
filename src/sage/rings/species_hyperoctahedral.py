@@ -2324,3 +2324,116 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
                                  dompart)
                 result += c * summand
             return result
+
+        def hadamard_product(self, other):
+            r"""
+            Return the Hadamard product of ``self`` and ``other``.
+
+            The Hadamard product `F\boxtimes G` of two `r`-species is
+            given by `(F\boxtimes G)[U] = F[U]\times G[U]` on every
+            graded `C_r`-set `U`.  On molecular terms it is computed
+            with the double coset formula
+
+            .. MATH::
+
+                \frac{X^{\mathbf d}}{H}\boxtimes\frac{X^{\mathbf d}}{K}
+                = \sum_{\tau\in H\backslash W(r;\mathbf d)/K}
+                \frac{X^{\mathbf d}}{H\cap\tau K\tau^{-1}},
+
+            where `W(r;\mathbf d)` is the group of sort preserving
+            relabellings of the standard graded `C_r`-set of grade
+            `\mathbf d`.  The pairs of structures are indexed by the
+            double cosets, the stabilizer of the pair corresponding to
+            `\tau` being the intersection of the stabilizers.
+
+            EXAMPLES:
+
+            Exercise 2.1.9 in [BLL1998]_::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 1)
+                sage: W3 = _wreath_group(1, 3)
+                sage: C3 = P(W3.subgroup([(1, 2, 3)]))
+                sage: X3 = P(W3.subgroup([]))
+                sage: XE2 = P(W3.subgroup([(2, 3)]))
+                sage: E2 = P(_wreath_group(1, 2))
+                sage: C3.hadamard_product(C3)
+                2*C_3(X)
+                sage: X3.hadamard_product(C3)
+                2*X^3
+                sage: XE2.hadamard_product(XE2)
+                X*E_2(X) + X^3
+                sage: C3.hadamard_product(E2**2)
+                0
+
+            The table of marks of the molecular `2`-species of degree
+            two::
+
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: W = _wreath_group(2, 2)
+                sage: C = [P(W.subgroup([])), P(W.subgroup([(1, 2), (3, 4)])), P(W)]
+                sage: table([(b, [(a.hadamard_product(b)).coefficient(b.support()[0]) for a in C]) for b in C])
+                  X^2      [8, 2, 1]
+                  X°^2     [0, 2, 1]
+                  E_2(X°)  [0, 0, 1]
+
+            Structures with different grades do not interact, as shown
+            above for `C_3(X)` and `E_2(X)^2`.
+
+            A multisort example::
+
+                sage: Q = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+                sage: W11 = _wreath_young_subgroup(2, [1, 1])
+                sage: XY = Q(W11.subgroup([]), {0: [1, 2], 1: [3, 4]})
+                sage: XoYo = Q(W11, {0: [1, 2], 1: [3, 4]})
+                sage: XY.hadamard_product(XY)
+                4*X*Y
+                sage: XY.hadamard_product(XoYo)
+                X*Y
+
+            TESTS::
+
+                sage: C3.hadamard_product(-C3)
+                -2*C_3(X)
+
+                sage: PolynomialHyperoctahedralSpecies(QQ, 2).one().hadamard_product(PolynomialHyperoctahedralSpecies(QQ, 2, "Y").one())
+                Traceback (most recent call last):
+                ...
+                ValueError: the factors of a Hadamard product must have the same parent
+            """
+            P = self.parent()
+            if P is not other.parent():
+                raise ValueError("the factors of a Hadamard product must have the same parent")
+            r = P._r
+
+            result = P.zero()
+            for M, c in self:
+                mc = M.grade()
+                domain = range(1, r * sum(mc) + 1)
+                # the group of sort preserving relabellings of the
+                # standard graded r-set of grade mc, together with
+                # the assignment of its C_r-orbits to the sorts
+                S_up = _wreath_young_subgroup(r, list(mc))
+                dompart = _canonical_dompart(r, tuple(mc))
+                # the group of M acts on the standard graded r-set of
+                # grade mc, its sorts being consecutive
+                H, _ = M.permutation_group()
+
+                for N, d in other:
+                    if mc != N.grade():
+                        continue
+                    K, _ = N.permutation_group()
+
+                    # sum over double coset representatives: the group
+                    # of the pair of structures with representative tau
+                    # is the intersection H n tau K tau^-1
+                    summand = P.zero()
+                    for tau, _ in libgap.DoubleCosetRepsAndSizes(S_up, H, K):
+                        G = libgap.Intersection(libgap.ConjugateGroup(K, tau.Inverse()),
+                                               H)
+                        summand += P(PermutationGroup(gap_group=G, domain=domain),
+                                     dompart)
+                    result += c * d * summand
+            return result
