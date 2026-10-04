@@ -117,6 +117,8 @@ from sage.categories.monoids import Monoids
 from sage.categories.sets_with_grading import SetsWithGrading
 from sage.combinat.free_module import CombinatorialFreeModule
 from sage.combinat.integer_vector import IntegerVectors
+from sage.combinat.partition import Partitions
+from sage.combinat.sf.sf import SymmetricFunctions
 from sage.groups.perm_gps.constructor import PermutationGroupElement
 from sage.groups.perm_gps.hyperoctahedral_group import (
     _check_grade,
@@ -2059,6 +2061,118 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
         """
         return self.element_class(self, {H * K: ZZ.one()})
 
+    def _exponential(self, multiplicities, degrees):
+        r"""
+        Return `E_r(\sum_i m_i X_i)` in the specified degrees.
+
+        The weighted `r`-exponential is expanded into molecular species
+        using the `\lambda`-ring coefficients `m_\lambda(c)`, which are
+        obtained from the monomial symmetric functions by substituting
+        the Adams operations `p_k \mapsto \psi_k(c)`:
+
+        .. MATH::
+
+            E_r(cX)
+            = \sum_{\lambda} m_\lambda(c)
+              \frac{X_r^{|\lambda|}}{W(r;\lambda)},
+
+        where `W(r;\lambda)` is the wreath Young subgroup
+        `W(r,\lambda_1)\times W(r,\lambda_2)\times\cdots`, so that
+        `X_r^d/W(r;\lambda)` is the molecular `r`-species
+        `E(r)_{\lambda_1}E(r)_{\lambda_2}\cdots`, the inflation of the
+        ordinary molecular species `E_\lambda`.
+
+        INPUT:
+
+        - ``multiplicities`` -- a list of weights, elements of the base
+          ring, of length the arity of ``self``
+
+        - ``degrees`` -- a list of nonnegative integers, of the same
+          length, such that the result is homogeneous of degree
+          ``degrees[i]`` in sort ``i``
+
+        EXAMPLES::
+
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+            sage: P._exponential([1], [3])
+            E_3(X°)
+            sage: P._exponential([3/2], [3])
+            3/2*E_3(X°) + 3/4*E_2(X°)*X° - 1/16*X°^3
+
+        The weights use the usual lambda-ring structure of the base
+        ring.  In particular, if `q` has lambda degree one, then
+        `\psi_n(q) = q^n`::
+
+            sage: R.<q> = QQ[]
+            sage: P = PolynomialHyperoctahedralSpecies(R, 2)
+            sage: P._exponential([1+q], [2])
+            (q^2+1)*E_2(X°) + q*X°^2
+            sage: P._exponential([1+q], [3])
+            (q^3+1)*E_3(X°) + (q^2+q)*E_2(X°)*X°
+            sage: P._exponential([1-q], [2])
+            (-q^2+1)*E_2(X°) + (q^2-q)*X°^2
+
+        Each sort contributes a separate factor::
+
+            sage: P = PolynomialHyperoctahedralSpecies(R, 2, "X, Y")
+            sage: P._exponential([1, q], [2, 2])
+            q^2*E_2(X°)*E_2(Y°)
+
+        TESTS::
+
+            sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+            sage: P._exponential([1], [0])
+            1
+            sage: P._exponential([1], [0]).parent() is P
+            True
+        """
+        B = self.base_ring()
+        Sym = SymmetricFunctions(B)
+        p = Sym.p()
+        m = Sym.m()
+
+        def stretch(c, k):
+            r"""
+            Substitute in ``c`` all variables appearing in the
+            base ring with their ``k``-th power.
+            """
+            if callable(c):
+                return c(*[g ** k for g in B.gens() if g != B.one()])
+            return c
+
+        def monomial(c, lam):
+            r"""
+            Return `m_\lambda(c)`, the monomial symmetric function
+            evaluated at the virtual alphabet `c`, by expanding
+            `m_\lambda` into powersum symmetric functions and
+            substituting `p_k \mapsto \psi_k(c)`.
+            """
+            total = B.zero()
+            for mu, coeff in p(m[lam]).monomial_coefficients().items():
+                prod = B.one()
+                for k, mult in mu.to_exp_dict().items():
+                    prod *= stretch(c, k) ** mult
+                total += coeff * prod
+            return total
+
+        r = self._r
+
+        def factor(s, c, d):
+            r"""
+            Return `E_r(c X_s)_d` as a molecular `r`-species in
+            sort ``s``.
+            """
+            grade = [0] * self._arity
+            grade[s] = d
+            dompart = _canonical_dompart(r, grade)
+            return self.sum(monomial(c, lam)
+                            * self(_wreath_young_subgroup(r, list(lam)), dompart)
+                            for lam in Partitions(d))
+
+        return self.prod(factor(s, multiplicities[s], degrees[s])
+                         for s in range(self._arity))
+
     class Element(CombinatorialFreeModule.Element):
         r"""
         A (virtual) polynomial `r`-species.
@@ -2437,3 +2551,122 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
                                      dompart)
                     result += c * d * summand
             return result
+
+        def _compose_with_weighted_singletons(self, names, multiplicities, args):
+            r"""
+            Return the type 2 substitution of ``self`` with sums of
+            weighted singleton species.
+
+            This is the weighted version of
+            :meth:`_compose_with_singletons`: the homogeneous `k`-sort
+            `r`-species ``self`` is substituted with
+            `(\sum_j m_{1,j} X_{1,j}, \ldots, \sum_j m_{k,j} X_{k,j})`.
+
+            The entries of ``multiplicities`` are weights, elements of
+            the base ring, not necessarily integer multiplicities.  The
+            unweighted composition with the corresponding singleton
+            species is computed first; the result is then combined by a
+            Hadamard product with the product of the weighted
+            exponentials
+
+            .. MATH::
+
+                \prod_i E_r\left(\sum_j m_{i,j} X_{i,j}\right),
+
+            so that the usual lambda-ring structure of the base ring is
+            used.  In particular, if `q` has lambda degree one, then
+            `\psi_n(q) = q^n` and, writing `R = \QQ[q]`, the theory of
+            [Henderson2004]_ yields
+
+            .. MATH::
+
+                E_r((1+q)X) = (1+q^2)E(r)_2 + q(X^\circ)^2.
+
+            INPUT:
+
+            - ``names`` -- the (flat) list of the names of the sorts of
+              the result, whose length is the total number of parts of
+              the compositions in ``args``
+
+            - ``multiplicities`` -- a (flat) list of weights, elements
+              of the base ring, of the same length as ``names``
+
+            - ``args`` -- a sequence of `k` compositions, where `k` is
+              the arity of ``self``.  The parts of the `i`-th
+              composition sum to the grade of ``self`` in sort `i` and
+              count `C_r`-orbits.
+
+            EXAMPLES:
+
+            The `r`-analogue of Equation (2.5.41) in [BLL1998]_, with
+            `E(r)_2 = E_2(X^\circ)` and `X^\circ` the degree one
+            species with stabilizer `C_r`::
+
+                sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+                sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
+                sage: W = _wreath_group(2, 2)
+                sage: P(W)._compose_with_weighted_singletons(["X"], [-1], [[2]])
+                -E_2(X°) + X°^2
+
+                sage: E2X = P(W.subgroup([[(1, 3), (2, 4)]]))
+                sage: E2X._compose_with_weighted_singletons(["X"], [-1], [[2]])
+                -E_2(X) + X^2
+
+            The weighted exponential of [Henderson2004]_, (4.8), is recovered
+            by substituting into the set-like species::
+
+                sage: R.<q> = QQ[]
+                sage: P = PolynomialHyperoctahedralSpecies(R, 2)
+                sage: P(W)._compose_with_weighted_singletons(["X"], [1+q], [[2]])
+                (q^2+1)*E_2(X°) + q*X°^2
+                sage: P(_wreath_group(2, 3))._compose_with_weighted_singletons(["X"], [1+q], [[3]])
+                (q^3+1)*E_3(X°) + (q^2+q)*E_2(X°)*X°
+
+            The weights of the sorts are independent; here the two
+            singleton structures of `E_2(X^\circ)` carry the weights
+            `1` and `q`::
+
+                sage: P(W)._compose_with_weighted_singletons(["X", "Y"], [1, q], [[1, 1]])
+                q*X°*Y°
+                sage: E2X = P(W.subgroup([[(1, 3), (2, 4)]]))
+                sage: E2X._compose_with_weighted_singletons(["X", "Y"], [1, q], [[1, 1]])
+                q*X*Y
+
+            For `r = 1` the result agrees with the ordinary weighted
+            composition, Equation (2.5.41) in [BLL1998]_::
+
+                sage: P1 = PolynomialHyperoctahedralSpecies(QQ, 1)
+                sage: E2 = P1(SymmetricGroup(2))
+                sage: C4 = P1(CyclicPermutationGroup(4))
+                sage: E2._compose_with_weighted_singletons(["X"], [-1], [[2]])
+                -E_2(X) + X^2
+                sage: C4._compose_with_weighted_singletons(["X", "Y"], [1, -1], [[2, 2]])
+                2*X^2*Y^2 - {((1,2)(3,4),): ({1, 2}, {3, 4})}
+
+                sage: (C4 + E2^2)._compose_with_weighted_singletons(["X"], [-1], [[4]])
+                -C_4(X) + {((1,2)(3,4),)} + E_2(X)^2 - 2*E_2(X)*X^2 + X^4
+
+            TESTS::
+
+                sage: P.zero()._compose_with_weighted_singletons(["X"], [-1], [[0]])
+                0
+
+                sage: C4._compose_with_weighted_singletons(["X"], [-1, 0], [[4]])
+                Traceback (most recent call last):
+                ...
+                ValueError: the number of names must match the number of multiplicities
+
+                sage: C4._compose_with_weighted_singletons(["X"], [-1], [[2,2]])
+                Traceback (most recent call last):
+                ...
+                ValueError: the total length of the compositions must match the number of names
+            """
+            if len(names) != len(multiplicities):
+                raise ValueError("the number of names must match the number of multiplicities")
+            if sum(len(c) for c in args) != len(names):
+                raise ValueError("the total length of the compositions must match the number of names")
+            left = self._compose_with_singletons(names, args)
+            right = left.parent()._exponential(multiplicities,
+                                               list(chain.from_iterable(args)))
+            return left.hadamard_product(right)
