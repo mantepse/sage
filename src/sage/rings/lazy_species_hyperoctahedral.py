@@ -111,6 +111,13 @@ of species::
     sage: E2(X1)[2] == L1r(P1(SymmetricGroup(2)))[2]
     True
 
+Not every lazy `r`-species is a type 1 substitution of an ordinary
+species.  For example, the species of signed graphs is available::
+
+    sage: S = L.SignedGraphs()
+    sage: S[2]
+    E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}
+
 REFERENCES:
 
 .. [Henderson2004] Anthony Henderson.
@@ -134,7 +141,15 @@ AUTHORS:
 import itertools
 from collections import defaultdict
 
+from sage.graphs.graph import Graph
+from sage.graphs.graph_generators import graphs
+from sage.groups.perm_gps.constructor import PermutationGroupElement
+from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+from sage.groups.perm_gps.permgroup import PermutationGroup
+from sage.libs.gap.libgap import libgap
+from sage.misc.inherit_comparison import InheritComparisonClasscallMetaclass
 from sage.misc.lazy_list import lazy_list
+from sage.rings.finite_rings.integer_mod_ring import Zmod
 from sage.rings.integer_ring import ZZ
 from sage.rings.rational_field import QQ
 from sage.rings.lazy_series import LazyCompletionGradedAlgebraElement
@@ -147,6 +162,7 @@ from sage.data_structures.stream import (Stream_exact,
                                          Stream_function,
                                          Stream_zero)
 from sage.structure.element import get_coercion_model, parent
+from sage.structure.unique_representation import UniqueRepresentation
 
 
 class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
@@ -603,3 +619,407 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
         super().__init__(PolynomialHyperoctahedralSpecies(base_ring, r, names),
                          sparse=sparse)
         self._arity = len(names)
+
+    def SignedGraphs(self, connected=False):
+        r"""
+        Return the species of signed graphs.
+
+        A signed graph is a simple graph in which every edge carries a
+        label in `Zmod(r)`, thought of as a power of a primitive `r`-th
+        root of unity.  A relabeling of a signed graph permutes the
+        vertices, whereas a sign change in the free `C_r`-set of labels
+        multiplies the labels of the adjacent edges.
+
+        For `r = 1` this is the species of simple graphs.
+
+        INPUT:
+
+        - ``connected`` -- boolean; whether the graphs should be
+          connected
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: L.SignedGraphs()[2]
+            E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}
+            sage: L.SignedGraphs(connected=True)[2]
+            {((1,2)(3,4), (1,3)(2,4))}
+
+            sage: sorted(str(G.edges()) for G in L.SignedGraphs().isotypes(3))
+            ['[(1, 2, 0), (1, 3, 0), (2, 3, 0)]', '[(1, 2, 0), (1, 3, 0), (2, 3, 1)]',
+             '[(1, 3, 0), (2, 3, 0)]', '[(2, 3, 0)]', '[]']
+
+        The species of signed graphs is not a type 1 substitution of an
+        ordinary species, because the stabilizers of its structures are
+        in general not wreath products::
+
+            sage: L.SignedGraphs()[3]
+            E_3(X°) + X°*{((1,2)(3,4), (1,3)(2,4))} + {((1,2)(3,4)(5,6), (1,3)(2,4))} + 2*{((3,5)(4,6), (1,2)(3,4)(5,6), (1,3)(2,4))}
+
+        TESTS::
+
+            sage: LazyHyperoctahedralSpecies(QQ, 2, "X, Y").SignedGraphs()
+            Traceback (most recent call last):
+            ...
+            ValueError: the species of signed graphs is only implemented for a single sort
+        """
+        if self._arity != 1:
+            raise ValueError("the species of signed graphs is only implemented for a single sort")
+        return SignedGraphSpecies(self, connected=bool(connected))
+
+
+def _lift_permutation(sigma, r):
+    r"""
+    Return the lift of the permutation ``sigma`` to the wreath product.
+
+    The permutation ``sigma`` of the blocks `1, \ldots, n` is lifted to
+    the permutation of `\{1, \ldots, rn\}` mapping the `t`-th point of
+    block `i` to the `t`-th point of block `sigma(i)`, for all `t` in
+    `range(r)`.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _lift_permutation
+        sage: from sage.groups.perm_gps.constructor import PermutationGroupElement
+        sage: _lift_permutation(PermutationGroupElement("(1,3)"), 2)
+        (1,5)(2,6)
+    """
+    cycles = []
+    for cyc in sigma.cycle_tuples():
+        for t in range(r):
+            cycles.append(tuple((i - 1) * r + t + 1 for i in cyc))
+    return PermutationGroupElement(cycles)
+
+
+def _signed_graph_orbits(n, r, connected=False):
+    r"""
+    Iterate over the orbits of the signed graphs with ``n`` vertices.
+
+    The signed graphs are acted upon by the hyperoctahedral group
+    `W(r, n) = C_r \wr S_n` on the domain `\{1, \ldots, rn\}`: the
+    induced permutation of the blocks relabels the vertices, whereas a
+    sign change in a block `i` multiplies the labels of the edges
+    adjacent to vertex `i` with `\zeta`.
+
+    INPUT:
+
+    - ``n`` -- positive integer; the number of vertices
+
+    - ``r`` -- positive integer; the order of the cyclic group `C_r`
+
+    - ``connected`` -- boolean (default: ``False``); whether the
+      underlying graphs should be connected
+
+    OUTPUT: triples ``(G, ell, H)``, where ``G`` is a graph on the
+    vertices `1, \ldots, n`, ``ell`` is a tuple of edge labels in
+    ``range(r)``, indexed by the sorted edges of ``G``, and ``H`` is
+    the stabilizer of the corresponding signed graph, a subgroup of
+    `_wreath_group(r, n)`.
+
+    ALGORITHM:
+
+    We first iterate over the isomorphism classes of the underlying
+    graphs.  Since the action of `W(r, n)` maps a signed graph to a
+    signed graph with an isomorphic underlying graph, the orbits of
+    signed graphs with underlying graph `G` are the orbits of the edge
+    labelings of `G` under the subgroup `C_r^n \rtimes \operatorname{Aut}(G)`
+    of `W(r, n)`.  These orbits are enumerated using breadth first
+    search with the generators of this subgroup, and the stabilizers
+    are computed with GAP.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _signed_graph_orbits
+        sage: for G, ell, H in _signed_graph_orbits(2, 2):
+        ....:     print(G.edges(labels=False), ell, H.cardinality())
+        [] () 8
+        [(1, 2)] (0,) 4
+    """
+    W = _wreath_group(r, n)
+    # the generators of the cyclic groups C_r acting on the blocks
+    rotations = [PermutationGroupElement(tuple(range(i * r + 1, i * r + r + 1)))
+                 for i in range(n)]
+
+    if connected:
+        underlying = [G.canonical_label().relabel(range(1, n + 1), inplace=False)
+                      for G in graphs.nauty_geng("%s -c" % n)]
+    else:
+        underlying = [G.canonical_label().relabel(range(1, n + 1), inplace=False)
+                      for G in graphs(n)]
+
+    for G in underlying:
+        E = sorted((min(u, v), max(u, v))
+                   for u, v in G.edge_iterator(labels=False))
+        index = {e: k for k, e in enumerate(E)}
+        m = len(E)
+
+        # the subgroup of the wreath product preserving the underlying
+        # graph: the lifts of its automorphisms together with the
+        # rotations of the blocks
+        A = G.automorphism_group()
+        gens = [_lift_permutation(sigma, r) for sigma in A.gens()]
+        gens.extend(rotations)
+        WG = W.subgroup(gens)
+        gens_WG = WG.gens()
+
+        # for each generator precompute the induced permutation of the
+        # edges together with the shifts of the edge labels: the label
+        # of edge k is shifted by the sum of the signs at the endpoints
+        # of the edge
+        gen_maps = []
+        for g in gens_WG:
+            sigma = [0] * (n + 1)
+            eps = [0] * (n + 1)
+            for i in range(1, n + 1):
+                p = g((i - 1) * r + 1)
+                sigma[i] = (p - 1) // r + 1
+                eps[i] = (p - 1) % r
+            srcs = [0] * m
+            shifts = [0] * m
+            for k, (i, j) in enumerate(E):
+                u, v = sigma[i], sigma[j]
+                if u > v:
+                    u, v = v, u
+                target = index[(u, v)]
+                srcs[target] = k
+                shifts[target] = (eps[i] + eps[j]) % r
+            gen_maps.append((srcs, shifts))
+
+        # iterate over the orbits of the edge labelings under the
+        # subgroup, using breadth first search with its generators
+        seen = set()
+        for ell in itertools.product(range(r), repeat=m):
+            if ell in seen:
+                continue
+            orbit = [ell]
+            seen.add(ell)
+            frontier = [ell]
+            while frontier:
+                x = frontier.pop()
+                for srcs, shifts in gen_maps:
+                    y = tuple((x[k] + h) % r for k, h in zip(srcs, shifts))
+                    if y not in seen:
+                        seen.add(y)
+                        orbit.append(y)
+                        frontier.append(y)
+            # the stabilizer of the first element of the orbit, computed
+            # as the stabilizer of the point 1 in the permutation
+            # action of the generators on the orbit
+            to_gap = {x: i for i, x in enumerate(orbit, 1)}
+            perm_gens = [PermutationGroupElement([to_gap[tuple((x[k] + h) % r
+                                                                for k, h in zip(srcs, shifts))]
+                                                  for x in orbit])
+                         for srcs, shifts in gen_maps]
+            OS = libgap.OrbitStabilizer(WG, 1, gens_WG, perm_gens)
+            H = PermutationGroup(gap_group=OS["stabilizer"], domain=WG.domain())
+            yield G, ell, H
+
+
+class SignedGraphSpecies(LazyHyperoctahedralSpeciesElement, UniqueRepresentation,
+                          metaclass=InheritComparisonClasscallMetaclass):
+    r"""
+    The species of signed graphs.
+
+    A signed graph is a simple graph in which every edge carries a
+    label in `Zmod(r)`, thought of as a power of a primitive `r`-th
+    root of unity.  The `r`-species of signed graphs assigns to a free
+    `C_r`-set the set of all signed graphs whose vertices are its
+    `C_r`-orbits.  A relabeling permutes the vertices, whereas a sign
+    change multiplies the labels of the adjacent edges.
+
+    Since the stabilizer of a signed graph is in general not a wreath
+    product, this is an example of an `r`-species which is not a type 1
+    substitution of an ordinary species.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+        sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+        sage: S = L.SignedGraphs()
+        sage: S[:5]
+        [1,
+         X°,
+         E_2(X°) + {((1,2)(3,4), (1,3)(2,4))},
+         E_3(X°) + X°*{((1,2)(3,4), (1,3)(2,4))} + {((1,2)(3,4)(5,6), (1,3)(2,4))} + 2*{((3,5)(4,6), (1,2)(3,4)(5,6), (1,3)(2,4))},
+         E_4(X°) + ...]
+
+    The isomorphism types of signed graphs are signed graphs with
+    vertices `1, \ldots, n`::
+
+        sage: sorted(str(G.edges()) for G in S.isotypes(3))
+        ['[(1, 2, 0), (1, 3, 0), (2, 3, 0)]', '[(1, 2, 0), (1, 3, 0), (2, 3, 1)]',
+         '[(1, 3, 0), (2, 3, 0)]', '[(2, 3, 0)]', '[]']
+
+    Every signed graph decomposes uniquely into connected signed graphs::
+
+        sage: E = LazyCombinatorialSpecies(QQ, "Z").Sets()
+        sage: all(E(L.SignedGraphs(connected=True))[n] == S[n] for n in range(5))
+        True
+
+    There are `(r+1)^{\binom{n}{2}}` signed graphs with `n` vertices, so
+    the generating series has a closed form::
+
+        sage: S.generating_series().truncate(7)
+        1 + 1/2*X + 3/8*X^2 + 9/16*X^3 + 243/128*X^4 + 19683/1280*X^5 + 1594323/5120*X^6
+        sage: L.SignedGraphs(connected=True).generating_series().truncate(7)
+        1/2*X + 1/4*X^2 + 5/12*X^3 + 13/8*X^4 + 1151/80*X^5 + 9103/30*X^6
+
+    The number of isomorphism types of signed graphs with `n` vertices
+    is the number of switching classes of signed graphs::
+
+        sage: S.isotype_generating_series()[:6]
+        [1, 1, 2, 5, 18, 100]
+
+    For `r = 1` we recover the species of simple graphs::
+
+        sage: L1 = LazyHyperoctahedralSpecies(QQ, 1)
+        sage: Gs = L1.SignedGraphs()
+        sage: G = LazyCombinatorialSpecies(QQ, "X").Graphs()
+        sage: all(Gs.isotype_generating_series()[n] == G.isotype_generating_series()[n]
+        ....:      for n in range(6))
+        True
+
+        sage: Gs[3]
+        2*E_3(X) + 2*X*E_2(X)
+
+    TESTS::
+
+        sage: TestSuite(S).run(skip=['_test_category', '_test_pickling'])
+        sage: TestSuite(L.SignedGraphs(connected=True)).run(skip=['_test_category', '_test_pickling'])
+    """
+    def __init__(self, parent, connected=False):
+        r"""
+        Initialize the species of signed graphs.
+
+        INPUT:
+
+        - ``parent`` -- a lazy species ring
+
+        - ``connected`` -- boolean; whether the graphs should be
+          connected
+
+        TESTS::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: S = L.SignedGraphs()
+            sage: TestSuite(S).run(skip=['_test_category', '_test_pickling'])
+
+            sage: S is L.SignedGraphs()
+            True
+
+            sage: S == L.SignedGraphs(connected=True)
+            False
+
+            sage: L.SignedGraphs(True) is L.SignedGraphs(connected=1)
+            True
+        """
+        P = parent._laurent_poly_ring
+        self._connected = connected = bool(connected)
+
+        def coefficient(n):
+            if not n:
+                return P.one() if not connected else P.zero()
+            return sum(P(H) for _, _, H
+                       in _signed_graph_orbits(n, P._r, connected))
+
+        S = parent(coefficient)
+        super().__init__(parent, S._coeff_stream)
+
+    def _repr_(self):
+        r"""
+        Return a string representation of ``self``.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: L.SignedGraphs()  # indirect doctest
+            Signed graph species
+
+            sage: L.SignedGraphs(connected=True)
+            Connected signed graph species
+        """
+        if self._connected:
+            return "Connected signed graph species"
+        return "Signed graph species"
+
+    def isotypes(self, labels):
+        r"""
+        Iterate over the isomorphism types of signed graphs with the
+        given number of vertices.
+
+        The isomorphism types are signed graphs with vertices
+        `1, \ldots, n`, whose edge labels are in `Zmod(r)`.
+
+        INPUT:
+
+        - ``labels`` -- the number of vertices
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: sorted(str(G.edges()) for G in L.SignedGraphs().isotypes(2))
+            ['[(1, 2, 0)]', '[]']
+            sage: sorted(str(G.edges()) for G in L.SignedGraphs(connected=True).isotypes(2))
+            ['[(1, 2, 0)]']
+
+            sage: list(L.SignedGraphs(connected=True).isotypes(0))
+            []
+            sage: list(L.SignedGraphs().isotypes(0))
+            [Graph on 0 vertices]
+        """
+        if labels not in ZZ:
+            raise NotImplementedError("isotypes with given labels are currently not supported")
+        if not labels:
+            if self._connected:
+                return
+            yield Graph([], immutable=True)
+            return
+        r = self.parent()._laurent_poly_ring._r
+        for G, ell, _ in _signed_graph_orbits(labels, r, self._connected):
+            E = sorted((min(u, v), max(u, v))
+                       for u, v in G.edge_iterator(labels=False))
+            result = Graph([(u, v, Zmod(r)(k)) for (u, v), k in zip(E, ell)])
+            result.add_vertices(range(1, labels + 1))
+            yield result.copy(immutable=True)
+
+    def generating_series(self):
+        r"""
+        Return the generating series of the species of signed graphs.
+
+        There are `(r+1)^{\binom{n}{2}}` signed graphs with `n` vertices,
+        so the coefficient of `X^n` is
+        `\frac{(r+1)^{\binom{n}{2}}}{n! r^n}`.
+
+        The generating series of the species of connected signed graphs
+        is its logarithm.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: L.SignedGraphs().generating_series().truncate(7)
+            1 + 1/2*X + 3/8*X^2 + 9/16*X^3 + 243/128*X^4 + 19683/1280*X^5 + 1594323/5120*X^6
+
+            sage: L.SignedGraphs(connected=True).generating_series().truncate(7)
+            1/2*X + 1/4*X^2 + 5/12*X^3 + 13/8*X^4 + 1151/80*X^5 + 9103/30*X^6
+
+            sage: LazyHyperoctahedralSpecies(QQ, 3).SignedGraphs().generating_series().truncate(5)
+            1 + 1/3*X + 2/9*X^2 + 32/81*X^3 + 512/243*X^4
+
+        TESTS::
+
+            sage: L.SignedGraphs(connected=True).generating_series().exp().truncate(7) == L.SignedGraphs().generating_series().truncate(7)
+            True
+        """
+        P = self.parent()
+        r = P._laurent_poly_ring._r
+        L = LazyPowerSeriesRing(P.base_ring().fraction_field(),
+                                P._laurent_poly_ring._indices._indices.variable_names())
+        s = L(lambda n: ZZ(r + 1) ** ZZ(n).binomial(2) / ZZ(n).factorial() / ZZ(r) ** n)
+        if self._connected:
+            return s.log()
+        return s
