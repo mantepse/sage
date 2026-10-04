@@ -113,12 +113,15 @@ from itertools import chain, product
 
 from sage.arith.misc import divisors
 from sage.categories.graded_algebras_with_basis import GradedAlgebrasWithBasis
+from sage.categories.modules_with_basis import Modules
 from sage.categories.monoids import Monoids
+from sage.categories.tensor import tensor
 from sage.categories.sets_cat import cartesian_product
 from sage.categories.sets_with_grading import SetsWithGrading
 from sage.combinat.free_module import CombinatorialFreeModule
 from sage.combinat.integer_vector import IntegerVectors
-from sage.combinat.partition import Partitions
+from sage.combinat.partition import Partition, Partitions
+from sage.combinat.partition_tuple import PartitionTuples_level
 from sage.combinat.set_partition_ordered import OrderedSetPartitions
 from sage.combinat.sf.sf import SymmetricFunctions
 from sage.groups.perm_gps.constructor import PermutationGroupElement
@@ -139,6 +142,8 @@ from sage.monoids.indexed_free_monoid import (IndexedFreeAbelianMonoid,
                                               IndexedFreeAbelianMonoidElement)
 from sage.rings.integer import Integer
 from sage.rings.integer_ring import ZZ
+from sage.rings.rational_field import QQ
+from sage.rings.sf_hyperoctahedral import HyperoctahedralSymmetricFunctions
 from sage.sets.set import Set
 from sage.structure.category_object import normalize_names
 from sage.structure.element import Element, parent
@@ -1911,6 +1916,145 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                         offset[s] += len(A._dompart[s])
             dompart = _canonical_dompart(r, tuple(grade))
             return PermutationGroup(gens, domain=range(1, sum(offset) + 1)), dompart
+
+        def cycle_index(self, parent=None):
+            r"""
+            Return the cycle index of ``self``.
+
+            This is the average over the conjugacy classes of the
+            permutation group of ``self`` of the power sums indexed by
+            the coloured cycle type, see Henderson [Henderson2004].
+
+            For unisort species, the result is an element of the power
+            sum basis of the hyperoctahedral symmetric functions of
+            level `r`; for multisort species, a tensor product of such.
+
+            EXAMPLES::
+
+                sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
+                sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
+                sage: M = MolecularHyperoctahedralSpecies(2)
+                sage: Xo = M(_wreath_group(2, 1))
+                sage: Xo.cycle_index()
+                1/2*p_1(ζ^1) + 1/2*p_1(ζ^0)
+
+                sage: Xf = M(_wreath_group(2, 1).subgroup([]))
+                sage: Xf.cycle_index()
+                p_1(ζ^0)
+
+            The cycle index of the atomic species `E_2(X^\circ)` has
+            the five terms of Henderson's decomposition of `W(2,2)`::
+
+                sage: E2Xo = M(_wreath_young_subgroup(2, [2]))
+                sage: E2Xo.cycle_index()
+                1/8*p_{1,1}(ζ^1) + 1/4*p_2(ζ^1) + 1/4*p_1(ζ^0)*p_1(ζ^1) + 1/8*p_{1,1}(ζ^0) + 1/4*p_2(ζ^0)
+
+            The cycle index is multiplicative::
+
+                sage: (Xo * Xo).cycle_index() == Xo.cycle_index()^2
+                True
+                sage: (Xo * Xf).cycle_index()
+                1/2*p_1(ζ^0)*p_1(ζ^1) + 1/2*p_{1,1}(ζ^0)
+
+                sage: M.one().cycle_index()
+                1
+
+            For multisort species, the result is a tensor product of
+            hyperoctahedral symmetric functions::
+
+                sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
+                sage: MXY = MolecularHyperoctahedralSpecies(2, "X, Y")
+                sage: AXY = AtomicHyperoctahedralSpecies(2, "X, Y")
+                sage: d0 = AXY(_wreath_group(2, 1), {0: [1, 2]})
+                sage: d1 = AXY(_wreath_group(2, 1), {1: [1, 2]})
+                sage: MXY({d0: 1, d1: 1}).cycle_index()
+                1/4*p_1(ζ^1) # p_1(ζ^1) + 1/4*p_1(ζ^1) # p_1(ζ^0) + 1/4*p_1(ζ^0) # p_1(ζ^1) + 1/4*p_1(ζ^0) # p_1(ζ^0)
+
+            An atom acting on both sorts::
+
+                sage: W = _wreath_young_subgroup(2, [1, 1])
+                sage: d = AXY(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+                sage: MXY({d: 1}).cycle_index()
+                1/2*p_1(ζ^1) # p_1(ζ^1) + 1/2*p_1(ζ^0) # p_1(ζ^0)
+
+            For `r = 1`, the values agree with the ordinary cycle index
+            of species.py, with keys `\lambda` instead of `(\lambda,)`::
+
+                sage: M1 = MolecularHyperoctahedralSpecies(1)
+                sage: M1(SymmetricGroup(3), {0: [1, 2, 3]}).cycle_index()
+                1/6*p_{1,1,1}(ζ^0) + 1/2*p_{2,1}(ζ^0) + 1/3*p_3(ζ^0)
+
+            TESTS::
+
+            Check that we support different parents::
+
+                sage: from sage.combinat.partition_tuple import PartitionTuples_level
+                sage: F = CombinatorialFreeModule(QQ, PartitionTuples_level(2))
+                sage: P = Xo.cycle_index(parent=F)
+                sage: P
+                1/2*B[([], [1])] + 1/2*B[([1], [])]
+                sage: P.parent() is F
+                True
+
+            This parent should be a module with basis indexed by
+            partition tuples::
+
+                sage: Xo.cycle_index(parent=QQ)
+                Traceback (most recent call last):
+                  ...
+                ValueError: `parent` should be a module with basis indexed by partition tuples
+            """
+            P = self.parent()
+            r = P._r
+            k = P._arity
+            if parent is None:
+                p = HyperoctahedralSymmetricFunctions(QQ, r)
+                if k == 1:
+                    parent = p
+                else:
+                    parent = tensor([p] * k)
+            elif parent not in Modules.WithBasis:
+                raise ValueError("`parent` should be a module with basis indexed "
+                                 "by partition tuples")
+            base_ring = parent.base_ring()
+            Pt = PartitionTuples_level(r)
+            G, dompart = self.permutation_group()
+            base = [min(s) if s else 1 for s in dompart]
+
+            def cycle_type(g):
+                types = []
+                for s in range(k):
+                    n_s = len(dompart[s]) // r
+                    sigma = []
+                    signs = []
+                    for i in range(n_s):
+                        image = g(base[s] + i * r)
+                        sigma.append((image - base[s]) // r)
+                        signs.append((image - base[s]) % r)
+                    parts = [[] for _ in range(r)]
+                    seen = [False] * n_s
+                    for start in range(n_s):
+                        if seen[start]:
+                            continue
+                        current = start
+                        length = 0
+                        typ = 0
+                        while not seen[current]:
+                            seen[current] = True
+                            length += 1
+                            typ = (typ + signs[current]) % r
+                            current = sigma[current]
+                        parts[typ].append(length)
+                    types.append([Partition(sorted(p, reverse=True))
+                                  for p in parts])
+                if k == 1:
+                    return Pt(types[0])
+                return tuple(Pt(t) for t in types)
+
+            return (parent.sum_of_terms([cycle_type(C.an_element()),
+                                         base_ring(C.cardinality())]
+                                        for C in G.conjugacy_classes())
+                    / G.cardinality())
 
         def structures(self, *labels):
             r"""
