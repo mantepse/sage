@@ -178,6 +178,7 @@ from sage.groups.perm_gps.constructor import PermutationGroupElement
 from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
 from sage.groups.perm_gps.permgroup import PermutationGroup
 from sage.libs.gap.libgap import libgap
+from sage.misc.cachefunc import cached_method
 from sage.misc.inherit_comparison import InheritComparisonClasscallMetaclass
 from sage.misc.lazy_list import lazy_list
 from sage.rings.finite_rings.integer_mod_ring import Zmod
@@ -415,9 +416,10 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
             sage: E2 = L1(SymmetricGroup(2))
             sage: E3 = L1(SymmetricGroup(3))
 
-        Substituting `E_2` into the cyclic singleton `X^\circ` gives
-        the cyclic composition, whereas substituting into the free
-        singleton `X` forgets the `C_r`-action of the inner orbits.
+        Substituting `E_2` into the singleton `X^\circ` with full cyclic
+        stabilizer gives the cyclic composition, whereas substituting into
+        the free singleton `X` forgets the `C_r`-action of the inner
+        orbits.
         The atoms are only canonical up to the choice of generators, so
         we list the orders of the molecular groups where the display
         would depend on that choice::
@@ -1109,6 +1111,351 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
             raise ValueError("the species of signed graphs is only implemented for a single sort")
         return SignedGraphSpecies(self, connected=bool(connected))
 
+    def _require_unisort_r2(self, name):
+        r"""
+        Raise a ``ValueError`` unless ``self`` is a ring of unisort
+        lazy `C_2`-species.
+
+        INPUT:
+
+        - ``name`` -- string; the name of the species, used in the error
+          message
+
+        TESTS::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: LazyHyperoctahedralSpecies(QQ, 3).SignSpecies()
+            Traceback (most recent call last):
+            ...
+            ValueError: the species of signs is only implemented for r = 2
+            sage: LazyHyperoctahedralSpecies(QQ, 2, "X, Y").SignSpecies()
+            Traceback (most recent call last):
+            ...
+            ValueError: the species of signs is only implemented for a single sort
+        """
+        if self._laurent_poly_ring._r != 2:
+            raise ValueError("the species of %s is only implemented for r = 2" % name)
+        if self._arity != 1:
+            raise ValueError("the species of %s is only implemented for a single sort" % name)
+
+    @cached_method
+    def SignSpecies(self):
+        r"""
+        Return the species of signs, the sum `\sum_n \mathrm{sgn}_n`.
+
+        A structure of degree `n` is a sign, which a signed permutation
+        acts upon by multiplying with the parity of the length of a
+        shortest reduced word, i.e., with the product of the sign of the
+        induced permutation of the orbits and the number of orbits whose
+        sign is flipped.  In particular, there are two structures on `n`
+        orbits for every `n`, including the empty one.
+
+        The homogeneous component of degree `n` is the molecular
+        species whose structure stabilizer is the alternating group of
+        signed permutations.  Its cycle index is `s_n(t) + s_{1^n}(u)`,
+        where `t` and `u` are the virtual alphabets whose power sums
+        are `p_k(t) = (p_k(ζ^0) + p_k(ζ^1))/2` and
+        `p_k(u) = (p_k(ζ^0) - p_k(ζ^1))/2`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: S = L.SignSpecies()
+
+        There are two structures at every degree, so that the
+        exponential generating series is `2 e^{z/2}`::
+
+            sage: S.generating_series().truncate(5)
+            2 + X + 1/4*X^2 + 1/24*X^3 + 1/192*X^4
+
+        The sign of a signed permutation on a single orbit is the flip,
+        so that the degree one component is the free singleton `X`; the
+        even signed permutations on two orbits are the powers of a
+        negative 2-cycle::
+
+            sage: S[1] == X
+            True
+            sage: S[2] == L.NegativeCycles()[2]
+            True
+
+        The cycle index of the degree `n` component is `s_n(t) +
+        s_{1^n}(u)`::
+
+            sage: sum(c * M.cycle_index()
+            ....:     for M, c in S[2].monomial_coefficients().items())
+            1/4*p_{1,1}(ζ^1) + 1/2*p_2(ζ^1) + 1/4*p_{1,1}(ζ^0)
+
+        TESTS::
+
+            sage: TestSuite(S).run(skip=['_test_pickling'])
+        """
+        self._require_unisort_r2("signs")
+        P = self._laurent_poly_ring
+
+        def coefficient(n):
+            if not n:
+                return 2 * P.one()
+            return P(_alternating_hyperoctahedral_group(n))
+        return self(coefficient)
+
+    @cached_method
+    def ParitySpecies(self):
+        r"""
+        Return the species of parities, the sum `\sum_n \mathrm{prt}_n`.
+
+        A structure of degree `n` is a parity, which a signed
+        permutation acts upon by multiplying with the parity of the
+        number of flipped orbits.  Equivalently, the structure `+`
+        corresponds to the signed permutations with an even number of
+        flipped orbits, and the structure `-` to those with an odd
+        number.  In particular, there are two structures on `n` orbits
+        for every `n`, including the empty one.
+
+        The homogeneous component of degree `n` is the molecular
+        species whose structure stabilizer is the group of signed
+        permutations flipping an even number of orbits.  Its cycle
+        index is `h_n(t) + h_n(u)`, where `t` and `u` are the virtual
+        alphabets whose power sums are `p_k(t) = (p_k(ζ^0) +
+        p_k(ζ^1))/2` and `p_k(u) = (p_k(ζ^0) - p_k(ζ^1))/2`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: Par = L.ParitySpecies()
+
+            sage: Par.generating_series().truncate(5)
+            2 + X + 1/4*X^2 + 1/24*X^3 + 1/192*X^4
+
+        The parity of a signed permutation on a single orbit is the flip,
+        so that the degree one component is the free singleton `X`; the
+        signed permutations on two orbits flipping an even number of
+        orbits stabilize a positive 2-cycle::
+
+            sage: Par[1] == X
+            True
+            sage: Par[2] == L.PositiveCycles()[2]
+            True
+
+        The cycle index of the degree `n` component is `h_n(t) + h_n(u)`::
+
+            sage: sum(c * M.cycle_index()
+            ....:     for M, c in Par[2].monomial_coefficients().items())
+            1/4*p_{1,1}(ζ^1) + 1/4*p_{1,1}(ζ^0) + 1/2*p_2(ζ^0)
+
+        TESTS::
+
+            sage: TestSuite(Par).run(skip=['_test_pickling'])
+        """
+        self._require_unisort_r2("parities")
+        P = self._laurent_poly_ring
+
+        def coefficient(n):
+            if not n:
+                return 2 * P.one()
+            return P(_even_flip_group(n))
+        return self(coefficient)
+
+    @cached_method
+    def PositiveCycles(self):
+        r"""
+        Return the species of positive cycles, the sum `\sum_n C^+_n`.
+
+        A structure of degree `n` is a positive `n`-cycle, a cycle
+        through all `n` orbits whose signs multiply to `+1`; the
+        structures are in bijection with the signed permutations that
+        consist of a single positive cycle.  The structure stabilizer
+        is generated by the rotation of the cycle and the flip of all
+        its orbits, and has order `2n`.
+
+        The exponential generating series is `-log(1-z)/2`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: C = L.PositiveCycles()
+
+            sage: C.generating_series().truncate(5)
+            1/2*X + 1/4*X^2 + 1/6*X^3 + 1/8*X^4
+
+        A positive cycle on a single orbit has full cyclic stabilizer,
+        so that the degree one component is the singleton `X^\circ`,
+        and on two orbits the stabilizer coincides with the group of
+        the parity species::
+
+            sage: C[1] == L(_wreath_group(2, 1))
+            True
+            sage: C[2] == L.ParitySpecies()[2]
+            True
+
+        Positive and negative cycles on an odd number of orbits have
+        conjugate stabilizers, so that the two species coincide there::
+
+            sage: all(C[n] == L.NegativeCycles()[n] for n in range(1, 6) if n % 2)
+            True
+            sage: C[2] == L.NegativeCycles()[2]
+            False
+
+        TESTS::
+
+            sage: TestSuite(C).run(skip=['_test_pickling'])
+        """
+        self._require_unisort_r2("positive cycles")
+        P = self._laurent_poly_ring
+        return self(lambda n: P(_positive_cycle_group(n)) if n else P.zero())
+
+    @cached_method
+    def NegativeCycles(self):
+        r"""
+        Return the species of negative cycles, the sum `\sum_n C^-_n`.
+
+        A structure of degree `n` is a negative `n`-cycle, a cycle
+        through all `n` orbits whose signs multiply to `-1`; the
+        structures are in bijection with the signed permutations that
+        consist of a single negative cycle.  The structure stabilizer
+        is the cyclic group generated by a negative `n`-cycle, and has
+        order `2n`.
+
+        The exponential generating series is `-log(1-z)/2`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: C = L.NegativeCycles()
+
+            sage: C.generating_series().truncate(5)
+            1/2*X + 1/4*X^2 + 1/6*X^3 + 1/8*X^4
+
+        A negative cycle on a single orbit has full cyclic stabilizer,
+        so that the degree one component is the singleton `X^\circ`;
+        the even signed permutations on two orbits are the powers of a
+        negative 2-cycle::
+
+            sage: C[1] == L(_wreath_group(2, 1))
+            True
+            sage: C[2] == L.SignSpecies()[2]
+            True
+
+        Negative and positive cycles on an odd number of orbits have
+        conjugate stabilizers, so that the two species coincide there::
+
+            sage: all(C[n] == L.PositiveCycles()[n] for n in range(1, 6) if n % 2)
+            True
+            sage: C[2] == L.PositiveCycles()[2]
+            False
+
+        TESTS::
+
+            sage: TestSuite(C).run(skip=['_test_pickling'])
+        """
+        self._require_unisort_r2("negative cycles")
+        P = self._laurent_poly_ring
+        return self(lambda n: P(_negative_cycle_group(n)) if n else P.zero())
+
+    @cached_method
+    def SignedCycles(self):
+        r"""
+        Return the species of signed cycles, the sum `\sum_n C^{\pm}_n`
+        of the positive and the negative cycles.
+
+        A structure of degree `n` is a signed permutation that consists
+        of a single cycle through all `n` orbits.
+
+        The cycle index of the homogeneous component of degree `n` is
+        `\frac{1}{n} \sum_{k \mid n} \phi(k) (p_k^{n/k}(ζ^0) +
+        p_k^{n/k}(ζ^1))`, and the exponential generating series is
+        `-log(1-z)`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.rings.lazy_species import LazyCombinatorialSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: C = L.SignedCycles()
+            sage: C == L.PositiveCycles() + L.NegativeCycles()
+            True
+
+            sage: C.generating_series().truncate(5)
+            X + 1/2*X^2 + 1/3*X^3 + 1/4*X^4
+
+            sage: sum(c * M.cycle_index()
+            ....:     for M, c in C[3].monomial_coefficients().items())
+            1/3*p_{1,1,1}(ζ^1) + 2/3*p_3(ζ^1) + 1/3*p_{1,1,1}(ζ^0) + 2/3*p_3(ζ^0)
+
+        A set of signed cycles is a signed permutation, so that the type
+        1 substitution of the signed cycles into the species of sets
+        is the species of signed permutations, whose exponential
+        generating series is `1/(1-z)`::
+
+            sage: E = LazyCombinatorialSpecies(QQ, "Z").Sets()
+            sage: P = E(C)
+            sage: [P.generating_series()[n] for n in range(5)]
+            [1, 1, 1, 1, 1]
+
+        The isomorphism types are the signed cycle types, so that their
+        number is the number of pairs of partitions of total size `n`::
+
+            sage: P.isotype_generating_series()[:5]
+            [1, 2, 5, 10, 20]
+
+        TESTS::
+
+            sage: TestSuite(C).run(skip=['_test_pickling'])
+        """
+        return self.PositiveCycles() + self.NegativeCycles()
+
+    @cached_method
+    def OrientedCycles(self):
+        r"""
+        Return the species of oriented cycles, the sum `\sum_n C^o_n`.
+
+        A structure of degree `n` is an oriented cycle on `n-1` of the
+        `n` orbits, the remaining orbit being the missing label of the
+        cycle.  A signed permutation acts by relabelling, except that
+        changing the sign of the missing label reverses the cycle.
+
+        There are `n (n-2)!` structures on `n` orbits, so that the
+        exponential generating series is `z/2 (1 - log(1-z/2))`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: O = L.OrientedCycles()
+
+            sage: O.generating_series().truncate(5)
+            1/2*X + 1/4*X^2 + 1/16*X^3 + 1/48*X^4
+
+        An oriented cycle on a single orbit has full cyclic stabilizer,
+        so that the degree one component is the singleton `X^\circ`,
+        and an oriented cycle on two orbits is a pair of them::
+
+            sage: O[1] == L(_wreath_group(2, 1))
+            True
+            sage: O[2] == L(_wreath_group(2, 1))^2
+            True
+
+        An oriented cycle on three orbits consists of the choice of the
+        missing label together with an orientation of the cycle on the
+        remaining two orbits::
+
+            sage: len(list(O.structures([(1, 2), (3, 4), (5, 6)])))
+            3
+
+        TESTS::
+
+            sage: TestSuite(O).run(skip=['_test_pickling'])
+        """
+        self._require_unisort_r2("oriented cycles")
+        P = self._laurent_poly_ring
+        return self(lambda n: P(_oriented_cycle_group(n)) if n else P.zero())
+
 
 def _lift_permutation(sigma, r):
     r"""
@@ -1131,6 +1478,166 @@ def _lift_permutation(sigma, r):
         for t in range(r):
             cycles.append(tuple((i - 1) * r + t + 1 for i in cyc))
     return PermutationGroupElement(cycles)
+
+
+def _signed_permutation(eps, sigma):
+    r"""
+    Return the signed permutation with signs ``eps`` and underlying
+    permutation ``sigma`` as a permutation of `\{1, \ldots, 2n\}`.
+
+    The points `2i+1` and `2i+2` are the phases `0` and `1` of the
+    orbit `i`, for `i` in `range(n)`.  The signed permutation
+    `(\epsilon; \sigma)` maps the phase `t` of the orbit `i` to the
+    phase `t + \epsilon_i` of the orbit `sigma(i)`.
+
+    INPUT:
+
+    - ``eps`` -- list of `n` integers; the signs of the orbits, taken
+      modulo `2`
+
+    - ``sigma`` -- list of `n` integers; the images `sigma[i]` of the
+      orbits, i.e., a permutation of `range(n)` in one-line notation
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _signed_permutation
+        sage: _signed_permutation([1, 0], [1, 0])   # a negative 2-cycle
+        (1,4,2,3)
+        sage: _signed_permutation([1, 1], [0, 1])   # the flip of all orbits
+        (1,2)(3,4)
+    """
+    n = len(eps)
+    images = []
+    for i in range(n):
+        j = sigma[i]
+        for t in range(2):
+            images.append(2*j + 1 + (t + eps[i]) % 2)
+    return PermutationGroupElement(images)
+
+
+def _alternating_hyperoctahedral_group(n):
+    r"""
+    Return the subgroup of even signed permutations of
+    ``_wreath_group(2, n)``.
+
+    This is the kernel of the sign character of `W(2, n)`, which maps
+    `(\epsilon; \sigma)` to `sign(\sigma) \prod_i \epsilon_i`.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _alternating_hyperoctahedral_group
+        sage: [_alternating_hyperoctahedral_group(n).order() for n in range(1, 5)]
+        [1, 4, 24, 192]
+    """
+    W = _wreath_group(2, n)
+    gens = []
+    for k in range(2, n):
+        sigma = list(range(n))
+        sigma[0], sigma[1], sigma[k] = 1, k, 0
+        gens.append(W(_signed_permutation([0] * n, sigma)))
+    if n > 1:
+        gens.append(W(_signed_permutation([1, 1] + [0] * (n - 2),
+                                         list(range(n)))))
+        sigma = list(range(n))
+        sigma[0], sigma[1] = 1, 0
+        gens.append(W(_signed_permutation([0, 1] + [0] * (n - 2), sigma)))
+    return W.subgroup(gens)
+
+
+def _even_flip_group(n):
+    r"""
+    Return the subgroup of ``_wreath_group(2, n)`` of signed
+    permutations flipping an even number of orbits.
+
+    This is the kernel of the character `(\epsilon; \sigma) \mapsto
+    \prod_i \epsilon_i`, and also the intersection of
+    ``_wreath_group(2, n)`` with the alternating group `A_{2n}`.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _even_flip_group
+        sage: [_even_flip_group(n).order() for n in range(1, 5)]
+        [1, 4, 24, 192]
+    """
+    W = _wreath_group(2, n)
+    gens = []
+    for i in range(n - 1):
+        sigma = list(range(n))
+        sigma[i], sigma[i + 1] = i + 1, i
+        gens.append(W(_signed_permutation([0] * n, sigma)))
+    if n > 1:
+        gens.append(W(_signed_permutation([1, 1] + [0] * (n - 2),
+                                         list(range(n)))))
+    return W.subgroup(gens)
+
+
+def _negative_cycle_group(n):
+    r"""
+    Return the cyclic subgroup of ``_wreath_group(2, n)`` generated by
+    a negative `n`-cycle.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _negative_cycle_group
+        sage: [_negative_cycle_group(n).order() for n in range(1, 5)]
+        [2, 4, 6, 8]
+    """
+    sigma = [(i + 1) % n for i in range(n)]
+    W = _wreath_group(2, n)
+    return W.subgroup([W(_signed_permutation([1] + [0] * (n - 1), sigma))])
+
+
+def _positive_cycle_group(n):
+    r"""
+    Return the subgroup of ``_wreath_group(2, n)`` stabilizing a
+    positive `n`-cycle.
+
+    This is generated by the positive `n`-cycle and the flip of all
+    orbits.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _positive_cycle_group
+        sage: [_positive_cycle_group(n).order() for n in range(1, 5)]
+        [2, 4, 6, 8]
+    """
+    sigma = [(i + 1) % n for i in range(n)]
+    W = _wreath_group(2, n)
+    gens = [W(_signed_permutation([0] * n, sigma)),
+            W(_signed_permutation([1] * n, list(range(n))))]
+    return W.subgroup(gens)
+
+
+def _oriented_cycle_group(n):
+    r"""
+    Return the stabilizer in ``_wreath_group(2, n)`` of an oriented
+    cycle on `n-1` of the `n` orbits.
+
+    The `n`-th orbit is the missing label of the cycle.  The stabilizer
+    is generated by the rotations of the cycle, the flip of an orbit of
+    the cycle, and the element flipping the missing label together with
+    reversing the cycle.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _oriented_cycle_group
+        sage: [_oriented_cycle_group(n).order() for n in range(1, 6)]
+        [2, 4, 16, 48, 128]
+    """
+    m = n - 1
+    rho = list(range(n))
+    for i in range(m):
+        rho[i] = (i + 1) % m
+    rev = list(range(n))
+    for i in range(m):
+        rev[i] = m - 1 - i
+    W = _wreath_group(2, n)
+    gens = [W(_signed_permutation([0] * m + [1], rev))]
+    if n > 1:
+        gens.append(W(_signed_permutation([1] + [0] * (n - 1),
+                                         list(range(n)))))
+        gens.append(W(_signed_permutation([0] * n, rho)))
+    return W.subgroup(gens)
 
 
 def _signed_graph_orbits(n, r, connected=False):
