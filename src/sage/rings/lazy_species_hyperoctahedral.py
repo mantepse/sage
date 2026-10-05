@@ -118,6 +118,37 @@ species.  For example, the species of signed graphs is available::
     sage: S[2]
     E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}
 
+The *type 2 substitution* of Henderson is available as well: a lazy
+`r`-species `F`, possibly multisort, can be evaluated at ordinary lazy
+species `G_1, \dots, G_k`, where `k` is the number of sorts of `F`.
+Here the points of the `C_r`-orbits are replaced by the points of the
+inner structures attached to them.  The result is again a lazy
+`r`-species, with the sorts of the args::
+
+    sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
+    sage: E2Xo = L(_wreath_young_subgroup(2, [2]))
+    sage: E2Xo(L1(SymmetricGroup(1)))[2]
+    E_2(Z°)
+    sage: sorted((M.permutation_group()[0].order(), c) for M, c in E2Xo(2*E2)[4])
+    [(16, 1), (32, 2)]
+
+In contrast to the type 1 substitution, the generating series of a
+type 2 substitution is in general not the substitution of the
+generating series [Henderson2004, Section 4]::
+
+    sage: [E2Xo(E2).generating_series()[n] for n in range(5)]
+    [0, 0, 0, 0, 1/32]
+
+For `r = 1` the type 2 substitution reduces to the usual composition
+of species, up to the choice of sorts::
+
+    sage: L1r.<X1> = LazyHyperoctahedralSpecies(QQ, 1)
+    sage: C4 = L1r(CyclicPermutationGroup(4))
+    sage: C4(E2)[8]
+    {((7,8), (1,3,5,7)(2,4,6,8))}
+    sage: L1(CyclicPermutationGroup(4))(E2)[8]
+    {((7,8), (1,3,5,7)(2,4,6,8))}
+
 REFERENCES:
 
 .. [Henderson2004] Anthony Henderson.
@@ -155,7 +186,9 @@ from sage.rings.rational_field import QQ
 from sage.rings.lazy_series import LazyCompletionGradedAlgebraElement
 from sage.rings.lazy_series_ring import (LazyCompletionGradedAlgebra,
                                          LazyPowerSeriesRing)
-from sage.rings.lazy_species import weighted_vector_compositions
+from sage.rings.lazy_species import (LazyCombinatorialSpecies,
+                                     LazyCombinatorialSpeciesElement,
+                                     weighted_vector_compositions)
 from sage.rings.species import PolynomialSpecies
 from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
 from sage.data_structures.stream import (Stream_exact,
@@ -350,6 +383,182 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
                                        f"but the generating series gives {coeff}")
 
 
+    def __call__(self, *args):
+        r"""
+        Return the type `2` substitution of ``args`` into ``self``.
+
+        This implements the composition `F \circ_2 (G_1, \ldots, G_k)`
+        of [Henderson2004]_, Equation (4.8), where ``self`` is a lazy
+        `C_r`-equivariant species and each `G_i` is an ordinary lazy
+        species, see
+        :meth:`~sage.rings.species_hyperoctahedral.PolynomialHyperoctahedralSpecies.Element.__call__`.
+
+        The args may be multisort, in which case the composite is a
+        `C_r`-equivariant species with the sorts of the args, as in the
+        ordinary composition of species: the sort of a point of the
+        composite is the sort of the corresponding point of the inner
+        structure attached to the block.
+
+        The result is a lazy `C_r`-equivariant species with the sorts
+        of the args over the common base ring of ``self`` and the args,
+        so that the weights of both are available.
+
+        EXAMPLES:
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.rings.lazy_species import LazyCombinatorialSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
+            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: Xo = L(_wreath_group(2, 1))
+            sage: L1.<Z> = LazyCombinatorialSpecies(QQ)
+            sage: E2 = L1(SymmetricGroup(2))
+            sage: E3 = L1(SymmetricGroup(3))
+
+        Substituting `E_2` into the cyclic singleton `X^\circ` gives
+        the cyclic composition, whereas substituting into the free
+        singleton `X` forgets the `C_r`-action of the inner orbits.
+        The atoms are only canonical up to the choice of generators, so
+        we list the orders of the molecular groups where the display
+        would depend on that choice::
+
+            sage: Xo(E2)[2]
+            {((1,2)(3,4), (1,3)(2,4))}
+            sage: [(M.permutation_group()[0].order(), c) for M, c in Xo(E3)[3]]
+            [(12, 1)]
+            sage: Xf = L(_wreath_group(2, 1).subgroup([]))
+            sage: Xf(E2)[2]
+            E_2(Z)
+            sage: Xf(Z + Z^2)[1:3]
+            [Z, Z^2]
+
+        Substituting `2 E_2` into the set-like species `E_2(X^\circ)`
+        of [Henderson2004]_, Example 3.8::
+
+            sage: E2Xo = L(_wreath_young_subgroup(2, [2]))
+            sage: sorted((M.permutation_group()[0].order(), c) for M, c in E2Xo(2*E2)[4])
+            [(16, 1), (32, 2)]
+
+        In contrast to the type 1 substitution, the exponential
+        generating series of a type 2 substitution is in general not
+        the substitution of the generating series::
+
+            sage: F = E2Xo(E2)
+            sage: [F.generating_series()[n] for n in range(5)]
+            [0, 0, 0, 0, 1/32]
+
+        Weighted species are supported, see Equation (4.8) of
+        [Henderson2004]_ and [Braunsteiner2010]_, Definition 4.1.3.
+        The composite carries the weights of both ``self`` and the
+        args, so the weights of ``self`` are re-based to their common
+        base ring::
+
+            sage: R.<q> = QQ[]
+            sage: L1q.<Zq> = LazyCombinatorialSpecies(R)
+            sage: E2Xo((1+q)*Zq)[2]
+            (q^2+1)*E_2(Zq°) + q*Zq°^2
+
+        Substitution is linear in the outer species, and each sort of a
+        multisort species can be substituted with its own species; the
+        two sorts of `E_2(X^\circ, Y^\circ)` below carry `E_2` and
+        `E_3`-structures.  The result has the sorts of the args::
+
+            sage: PXY = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
+            sage: LXY = LazyHyperoctahedralSpecies(QQ, 2, "X, Y")
+            sage: W22 = _wreath_young_subgroup(2, [2])
+            sage: A = LXY(PXY(W22, {0: [1, 2, 3, 4], 1: []}))
+            sage: B = LXY(PXY(W22, {0: [], 1: [1, 2, 3, 4]}))
+            sage: F = (A + B)(E2, E3)
+            sage: sorted((tuple(M.grade()), M.permutation_group()[0].order())
+            ....:     for n in [4, 6] for M, c in F[n])
+            [((4,), 32), ((6,), 288)]
+
+        The args may be multisort; the composite then has their sorts.
+        Substituting the product of the singletons of two sorts into
+        `E_2(X^\circ)` gives a structure with four orbits, two of each
+        sort::
+
+            sage: L2.<U, V> = LazyCombinatorialSpecies(QQ)
+            sage: E2Xo(U * V)[4]
+            {((3,4)(7,8), (1,2)(5,6), (1,3)(2,4)(5,7)(6,8)): ({1, 2, 3, 4}, {5, 6, 7, 8})}
+            sage: [(tuple(M.grade()), M.permutation_group()[0].order()) for M, c in E2Xo(U * V)[4]]
+            [((2, 2), 8)]
+
+        For `r = 1` the type 2 substitution specializes to the ordinary
+        composition of species::
+
+            sage: L1r.<X1> = LazyHyperoctahedralSpecies(QQ, 1)
+            sage: C4 = L1r(CyclicPermutationGroup(4))
+            sage: C4(E2)[8]
+            {((7,8), (1,3,5,7)(2,4,6,8))}
+            sage: L1(CyclicPermutationGroup(4))(E2)[8]
+            {((7,8), (1,3,5,7)(2,4,6,8))}
+
+        The substitution is associative with the ordinary composition of
+        species, and it is compatible with the type 1 substitution
+        [Henderson2004]_, Equation (4.9)::
+
+            sage: (Xo(E2))(E3)[6] == Xo(E2(E3))[6]
+            True
+            sage: E2(Xo(E2))[4] == E2Xo(E2)[4]
+            True
+
+        Substituting the singleton `X` forgets the `C_r`-action of the
+        inner orbits, and a zero argument annihilates all structures
+        using it::
+
+            sage: E2Xo(Z)[2]
+            E_2(Z°)
+            sage: (Xo + E2Xo)(Z)[1:3]
+            [Z°, E_2(Z°)]
+            sage: (Xo + E2Xo)(L1.zero())
+            0
+
+        Check the case of arity zero::
+
+            sage: L0 = LazyHyperoctahedralSpecies(QQ, 2, [])
+            sage: L0.one()()
+            1
+            sage: (5*L0.one())()
+            5
+
+        TESTS::
+
+            sage: E2Xo()
+            Traceback (most recent call last):
+            ...
+            ValueError: number of args must match arity of self
+            sage: E2Xo(2)
+            Traceback (most recent call last):
+            ...
+            ValueError: all args must be ordinary lazy species
+            sage: E2Xo(E2, E2)
+            Traceback (most recent call last):
+            ...
+            ValueError: number of args must match arity of self
+            sage: E2Xo(Xo)
+            Traceback (most recent call last):
+            ...
+            ValueError: all args must be ordinary lazy species
+            sage: E2Xo(L1.one())
+            Traceback (most recent call last):
+            ...
+            ValueError: can only compose with a positive valuation series
+            sage: L1w.<W> = LazyCombinatorialSpecies(QQ)
+            sage: A(E2, W)
+            Traceback (most recent call last):
+            ...
+            ValueError: unable to find a common parent for the substituted species (E_2, W)
+
+            sage: E2Xo(E2)._test_structures()
+            sage: E2Xo(2*E2)._test_structures()
+            sage: TestSuite(Xo(E2)).run(skip=['_test_category', '_test_pickling'])
+        """
+        if not args and self.parent()._arity == 0:
+            return self
+        return Type2CompositionSpeciesElement(self, *args)
+
+
 class Type1CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
     r"""
     The type 1 substitution of lazy `r`-species into an ordinary lazy
@@ -404,21 +613,33 @@ class Type1CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
             sage: (A + B)(X, Z3)
             Traceback (most recent call last):
             ...
-            ValueError: unable to find a common parent for (A+B) and the substituted r-species (X, Z3)
+            ValueError: unable to find a common parent for the substituted species (X, Z3)
         """
         fP = left.parent()
         # Find a good parent for the result
         cm = get_coercion_model()
         try:
-            P = cm.common_parent(left.base_ring(), *[parent(g) for g in args])
+            P = cm.common_parent(*[parent(g) for g in args])
         except TypeError:
-            raise ValueError(f"unable to find a common parent for {left} "
-                            f"and the substituted r-species {args}")
+            raise ValueError(f"unable to find a common parent for the "
+                             f"substituted species {args}")
         if not isinstance(P, LazyHyperoctahedralSpecies):
             raise ValueError(f"the substituted species {args} must be "
                              f"lazy r-species with the same r and sorts")
-
-        args = [P(g) for g in args]
+        try:
+            BR = cm.common_parent(fP.base_ring(), P.base_ring())
+        except TypeError:
+            raise ValueError(f"unable to find a common base ring for {left} "
+                            f"and the substituted species {args}")
+        if P.base_ring() is BR:
+            args = [P(g) for g in args]
+        else:
+            # the args stay in their own ring, whose weights coerce
+            # into the common base ring of the result
+            P = LazyHyperoctahedralSpecies(
+                BR, P._laurent_poly_ring._r,
+                P._laurent_poly_ring._indices._indices._names,
+                sparse=P._sparse)
 
         R = P._internal_poly_ring.base_ring()
         molecules = R._indices
@@ -464,6 +685,21 @@ class Type1CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
         sorder = left._coeff_stream._approximate_order
         gv = min(g._coeff_stream._approximate_order for g in args)
         L = fP._internal_poly_ring.base_ring()
+        if L.base_ring() is R.base_ring():
+            LR = L
+
+            def lcoeff(c):
+                return c
+        else:
+            # the homogeneous components of the outer species carry its
+            # weights, so they have to be re-based to the common base
+            # ring, in which also the weights of the args live
+            LR = PolynomialSpecies(
+                R.base_ring(),
+                fP._laurent_poly_ring._indices._indices.variable_names())
+
+            def lcoeff(c):
+                return R.base_ring()(c)
 
         def coeff(g, i):
             c = g._coeff_stream[i]
@@ -491,9 +727,9 @@ class Type1CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
                 # skip i=0 because it produces a term only for n=0
 
                 # compute homogeneous components
-                lF = defaultdict(L)
+                lF = defaultdict(LR)
                 for M, c in left[i]:
-                    lF[M.grade()] += L._from_dict({M: c})
+                    lF[M.grade()] += LR._from_dict({M: lcoeff(c)})
                 for mc, F in lF.items():
                     for degrees in weighted_vector_compositions(mc, n, weight_exp):
                         args_flat = [list(a[0:len(degrees[j])])
@@ -540,6 +776,209 @@ class Type1CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
         """
         return self._left.generating_series()(*[G.generating_series()
                                                 for G in self._args])
+
+
+class Type2CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
+    r"""
+    The type 2 substitution of ordinary lazy species into a lazy
+    `r`-species.
+
+    The generating series of a type 2 substitution is in general not
+    the substitution of the generating series, in contrast to the type
+    1 substitution, so it is computed coefficientwise from the
+    molecular expansion.
+    """
+
+    def __init__(self, left, *args):
+        r"""
+        Initialize the type 2 substitution of ``args`` into ``left``.
+
+        INPUT:
+
+        - ``left`` -- a lazy `r`-species with `k` sorts
+
+        - ``args`` -- `k` ordinary lazy species with the same sorts
+
+        TESTS::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.rings.lazy_species import LazyCombinatorialSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: Xo = L(_wreath_group(2, 1))
+            sage: L1.<Z> = LazyCombinatorialSpecies(QQ)
+            sage: E2 = L1(SymmetricGroup(2))
+            sage: F = Xo(E2)
+            sage: TestSuite(F).run(skip=['_test_category', '_test_pickling'])
+
+            sage: L.zero()(E2)
+            0
+            sage: Xo(L1.zero())
+            0
+            sage: (1 + Xo)(L1.zero())
+            1
+            sage: (1 + Xo)(E2)
+            1 + ({((1,2)(3,4),(1,3)(2,4))}) + O^7
+
+        Substituting a constant series raises an error::
+
+            sage: Xo(1 + E2)
+            Traceback (most recent call last):
+            ...
+            ValueError: can only compose with a positive valuation series
+
+        All substituted species must be ordinary lazy species with the
+        same sorts::
+
+            sage: Xo(Xo)
+            Traceback (most recent call last):
+            ...
+            ValueError: all args must be ordinary lazy species
+            sage: Xo(E2, E2)
+            Traceback (most recent call last):
+            ...
+            ValueError: number of args must match arity of self
+        """
+        fP = left.parent()
+        if len(args) != fP._arity:
+            raise ValueError("number of args must match arity of self")
+        if not all(isinstance(g, LazyCombinatorialSpeciesElement)
+                   for g in args):
+            raise ValueError("all args must be ordinary lazy species")
+
+        # Find a good parent for the result: an r-species with the
+        # sorts of the args over the common base ring
+        cm = get_coercion_model()
+        try:
+            P0 = cm.common_parent(*[parent(g) for g in args])
+        except TypeError:
+            raise ValueError(f"unable to find a common parent for the "
+                             f"substituted species {args}")
+        if not isinstance(P0, LazyCombinatorialSpecies):
+            raise ValueError(f"the substituted species {args} must be "
+                             f"ordinary lazy species")
+        try:
+            BR = cm.common_parent(fP.base_ring(), P0.base_ring())
+        except TypeError:
+            raise ValueError(f"unable to find a common base ring for {left} "
+                            f"and the substituted species {args}")
+
+        args = [P0(g) for g in args]
+        P = LazyHyperoctahedralSpecies(
+            BR, fP._laurent_poly_ring._r,
+            P0._laurent_poly_ring._indices._indices._names,
+            sparse=fP._sparse)
+
+        R = P._internal_poly_ring.base_ring()
+
+        # f = 0
+        if isinstance(left._coeff_stream, Stream_zero):
+            super().__init__(P, Stream_zero())
+            self._left = left
+            self._args = args
+            return
+
+        # all substituted species are zero, so the composition is constant
+        if all(isinstance(g._coeff_stream, Stream_zero) for g in args):
+            c = left[0]
+            if c:
+                c = list(c)[0][1]
+            else:
+                c = P.base_ring().zero()
+            super().__init__(P, P(c)._coeff_stream)
+            self._left = left
+            self._args = args
+            return
+
+        # the outer species is a constant polynomial
+        if (isinstance(left._coeff_stream, Stream_exact)
+                and not left._coeff_stream._constant
+                and left._coeff_stream._degree == 1):
+            c = left._coeff_stream[0]
+            B = c.parent()
+            if not (B is ZZ or B is QQ or B == fP.base_ring()):
+                c = c.coefficients()[0]
+            super().__init__(P, P(c)._coeff_stream)
+            self._left = left
+            self._args = args
+            return
+
+        for g in args:
+            if g._coeff_stream._approximate_order == 0:
+                if not g._coeff_stream.is_uninitialized() and g[0]:
+                    raise ValueError("can only compose with a positive valuation series")
+                g._coeff_stream._approximate_order = 1
+
+        sorder = left._coeff_stream._approximate_order
+        gv = min(g._coeff_stream._approximate_order for g in args)
+        L = fP._internal_poly_ring.base_ring()
+        if L.base_ring() is BR:
+            LR = L
+
+            def lcoeff(c):
+                return c
+        else:
+            # the homogeneous components of the outer species carry its
+            # weights, so they have to be re-based to the common base
+            # ring, in which also the weights of the args live
+            LR = PolynomialHyperoctahedralSpecies(
+                BR, fP._laurent_poly_ring._r,
+                fP._laurent_poly_ring._indices._indices._names)
+
+            def lcoeff(c):
+                return BR(c)
+
+        def coeff(g, i):
+            c = g._coeff_stream[i]
+            if not isinstance(c, PolynomialSpecies.Element):
+                return R(c)
+            return c
+
+        # args_flat and weights contain one list for each substituted species
+        weight_exp = [lazy_list(lambda j, g=g: len(coeff(g, j+1)))
+                      for g in args]
+
+        def flat(g):
+            # function needed to work around python's scoping rules
+            return itertools.chain.from_iterable(coeff(g, j) for j in itertools.count())
+
+        args_flat1 = [lazy_list(flat(g)) for g in args]
+
+        def coefficient(n):
+            if not n:
+                if left[0]:
+                    return R(list(left[0])[0][1])
+                return R.zero()
+            result = R.zero()
+            for i in range(1, n // gv + 1):
+                # skip i=0 because it produces a term only for n=0
+
+                # compute homogeneous components
+                lF = defaultdict(LR)
+                for M, c in left[i]:
+                    lF[M.grade()] += LR._from_dict({M: lcoeff(c)})
+                for mc, F in lF.items():
+                    for degrees in weighted_vector_compositions(mc, n, weight_exp):
+                        args_flat = [list(a[0:len(degrees[j])])
+                                     for j, a in enumerate(args_flat1)]
+                        multiplicities = [c for alpha, g_flat in zip(degrees, args_flat)
+                                          for d, (_, c) in zip(alpha, g_flat) if d]
+                        subs = [M for alpha, g_flat in zip(degrees, args_flat)
+                                for d, (M, _) in zip(alpha, g_flat) if d]
+                        non_zero_degrees = [[d for d in alpha if d] for alpha in degrees]
+                        names = ["X%s" % i for i in range(len(subs))]
+                        FX = F._compose_with_weighted_singletons(names,
+                                                                 multiplicities,
+                                                                 non_zero_degrees)
+                        FG = [(M._type2_substitute_molecular(subs), c)
+                              for M, c in FX]
+                        result += R.sum_of_terms(FG)
+            return result
+
+        coeff_stream = Stream_function(coefficient, P._sparse, sorder * gv)
+        super().__init__(P, coeff_stream)
+        self._left = left
+        self._args = args
 
 
 class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
@@ -652,10 +1091,12 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
 
         The species of signed graphs is not a type 1 substitution of an
         ordinary species, because the stabilizers of its structures are
-        in general not wreath products::
+        in general not wreath products.  We list the orders of the
+        stabilizer groups of the molecular components, since the choice
+        of their generators depends on the order of computation::
 
-            sage: L.SignedGraphs()[3]
-            E_3(X°) + X°*{((1,2)(3,4), (1,3)(2,4))} + {((1,2)(3,4)(5,6), (1,3)(2,4))} + 2*{((3,5)(4,6), (1,2)(3,4)(5,6), (1,3)(2,4))}
+            sage: sorted((M.permutation_group()[0].order(), c) for M, c in L.SignedGraphs()[3])
+            [(4, 1), (8, 1), (12, 2), (48, 1)]
 
         TESTS::
 
@@ -837,12 +1278,20 @@ class SignedGraphSpecies(LazyHyperoctahedralSpeciesElement, UniqueRepresentation
         sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
         sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
         sage: S = L.SignedGraphs()
-        sage: S[:5]
+        sage: S[:3]
         [1,
          X°,
-         E_2(X°) + {((1,2)(3,4), (1,3)(2,4))},
-         E_3(X°) + X°*{((1,2)(3,4), (1,3)(2,4))} + {((1,2)(3,4)(5,6), (1,3)(2,4))} + 2*{((3,5)(4,6), (1,2)(3,4)(5,6), (1,3)(2,4))},
-         E_4(X°) + ...]
+         E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}]
+
+        The orders of the stabilizer groups of the molecular components
+        of a homogeneous component do not depend on the order in which
+        the components are computed, in contrast to the choice of their
+        generators::
+
+        sage: [sorted((M.permutation_group()[0].order(), c) for M, c in S[n])
+        ....:  for n in [3, 4]]
+        [[(4, 1), (8, 1), (12, 2), (48, 1)],
+         [(4, 1), (4, 1), (4, 2), (8, 1), (8, 3), (12, 1), (16, 1), (16, 1), (24, 2), (32, 1), (32, 1), (48, 2), (384, 1)]]
 
     The isomorphism types of signed graphs are signed graphs with
     vertices `1, \ldots, n`::
