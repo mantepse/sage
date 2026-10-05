@@ -2008,7 +2008,8 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             r = P._r
             k = P._arity
             if parent is None:
-                p = HyperoctahedralSymmetricFunctions(QQ, r)
+                p = HyperoctahedralSymmetricFunctions(r,
+                                                   SymmetricFunctions(QQ).powersum())
                 if k == 1:
                     parent = p
                 else:
