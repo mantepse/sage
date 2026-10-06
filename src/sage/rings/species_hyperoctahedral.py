@@ -608,6 +608,16 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         `r`-species `C_d^n \rtimes H`, where `H` is the group of `F`;
         they are named `F_n(X@d)` accordingly.
 
+        Moreover, the type 2 substitutions `X@d(F)` of the atomic
+        species `X@d` of unit grade in sort `s` with the classical
+        species `F` of degree `n`, cf.
+        :meth:`~sage.rings.species_hyperoctahedral.MolecularHyperoctahedralSpecies.Element._type2_substitute_molecular`,
+        are atomic `r`-species; they are named `X@d(F_n)` accordingly.
+        The case `X(F_n)` is omitted, because `X(F_n) = F_n(X)` has
+        already been named above.  In the unlikely event that a type
+        2 substitution coincides with an already named species, it is
+        left unnamed.
+
         EXAMPLES::
 
             sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
@@ -621,13 +631,13 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
 
             sage: A = AtomicHyperoctahedralSpecies(2)
             sage: sorted(A.graded_component(2), key=str)
-            [E_2(X), E_2(X°), {((1,2)(3,4), (1,3)(2,4))}, {((1,2)(3,4),)}, {((1,4,2,3),)}]
+            [E_2(X), E_2(X°), X°(E_2), {((1,2)(3,4),)}, {((1,4,2,3),)}]
             sage: [a for a in sorted(A.graded_component(3), key=str) if a.get_custom_name()]
-            [C_3(X), C_3(X°), E_3(X), E_3(X°)]
+            [C_3(X), C_3(X°), E_3(X), E_3(X°), X°(C_3), X°(E_3)]
 
             sage: A = AtomicHyperoctahedralSpecies(4, "X, Y")
             sage: [a for a in sorted(A.graded_component([0, 2]), key=str) if a.get_custom_name()]
-            [E_2(Y), E_2(Y@2), E_2(Y°)]
+            [E_2(Y), E_2(Y@2), E_2(Y°), Y@2(E_2), Y°(E_2)]
         """
         if sum(grade) == 0:
             return
@@ -661,14 +671,35 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
 
         # the compositions F(X@d) of the classical species of degree n
         # with X@d, computed with the type 1 substitution
+        from sage.groups.perm_gps.permgroup_named import SymmetricGroup
         from sage.rings.species import MolecularSpecies, _classical_species_groups
         M = MolecularHyperoctahedralSpecies(self._r, self._names)
         molecules = {d: M({atoms[d]: ZZ.one()}) for d in divisors(self._r)}
+        # the ordinary molecular species of degree n in sort s and the
+        # singleton species of the remaining sorts, which act as
+        # placeholders for the type 2 substitution
+        O = MolecularSpecies(self._names)
+        singletons = [O(SymmetricGroup(1), {i: [1]})
+                      for i in range(self._arity)]
         for name, H in _classical_species_groups(n):
+            # the classical species as an ordinary molecular species of
+            # a single sort for the type 1 substitution and in sort s of
+            # all sorts for the type 2 substitution
             F = MolecularSpecies(self._names[s])(H, {0: range(1, n + 1)})
+            Fs = O(H, {s: range(1, n + 1)})
             for d in divisors(self._r):
                 molecule, = M._type1_substitute_molecular(F, [molecules[d]])._monomial
                 molecule.rename(f"{name}({atom_names[d]})")
+            # the type 2 substitutions X@d(F), where X(F) = F(X) has
+            # been renamed above already
+            for d in divisors(self._r):
+                if d == 1:
+                    continue
+                args = list(singletons)
+                args[s] = Fs
+                molecule, = molecules[d]._type2_substitute_molecular(args)._monomial
+                if not molecule.get_custom_name():
+                    molecule.rename(f"{atom_names[d]}({name})")
 
     def _element_constructor_(self, G, pi=None, check=True):
         r"""
@@ -2198,7 +2229,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
             phases::
 
                 sage: Xo._type2_substitute_molecular([E2])
-                {((1,2)(3,4), (1,3)(2,4))}
+                X°(E_2)
                 sage: _.permutation_group()[0].order()
                 4
 
@@ -2231,7 +2262,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
                 sage: E2X = Moxy(SymmetricGroup(2), {0: [1, 2]})
                 sage: E1Y = Moxy(SymmetricGroup(1), {1: [1]})
                 sage: Q._type2_substitute_molecular([E2X, E1Y])
-                {((1,2)(3,4), (1,3)(2,4)): ({1, 2, 3, 4}, {})}*Y°
+                X°(E_2)*Y°
 
             The molecules may be multisort; the sort of a new `C_r`-orbit
             is then the sort of the corresponding point of the molecule.
@@ -3344,7 +3375,7 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
 
                 sage: Xo = P(_wreath_group(2, 1))
                 sage: Xo(E2)
-                {((1,2)(3,4), (1,3)(2,4))}
+                X°(E_2)
                 sage: [(M.permutation_group()[0].order(), c) for M, c in Xo(E3)]
                 [(12, 1)]
                 sage: X_free = P(_wreath_group(2, 1).subgroup([]))

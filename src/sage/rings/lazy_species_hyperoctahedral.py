@@ -116,14 +116,14 @@ species.  For example, the species of signed graphs is available::
 
     sage: S = L.SignedGraphs()
     sage: S[2]
-    E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}
+    E_2(X°) + X°(E_2)
 
 Likewise, the species of Seidel graphs, i.e., of labelings of the complete
 graph with elements of `Z_r` acted upon by switching, is not a type 1
 substitution.  For `r = 2` its isomorphism types are the two-graphs::
 
     sage: L.SeidelGraphs()[2]
-    {((1,2)(3,4), (1,3)(2,4))}
+    X°(E_2)
 
 The *type 2 substitution* of Henderson is available as well: a lazy
 `r`-species `F`, possibly multisort, can be evaluated at ordinary lazy
@@ -551,7 +551,7 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
         would depend on that choice::
 
             sage: Xo(E2)[2]
-            {((1,2)(3,4), (1,3)(2,4))}
+            Z°(E_2)
             sage: [(M.permutation_group()[0].order(), c) for M, c in Xo(E3)[3]]
             [(12, 1)]
             sage: Xf = L(_wreath_group(2, 1).subgroup([]))
@@ -946,7 +946,7 @@ class Type2CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
             sage: (1 + Xo)(L1.zero())
             1
             sage: (1 + Xo)(E2)
-            1 + ({((1,2)(3,4),(1,3)(2,4))}) + O^7
+            1 + Z°(E_2) + O^7
 
         Substituting a constant series raises an error::
 
@@ -1209,9 +1209,9 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
             sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
             sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
             sage: L.SignedGraphs()[2]
-            E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}
+            E_2(X°) + X°(E_2)
             sage: L.SignedGraphs(connected=True)[2]
-            {((1,2)(3,4), (1,3)(2,4))}
+            X°(E_2)
 
             sage: sorted(str(G.edges()) for G in L.SignedGraphs().isotypes(3))
             ['[(1, 2, 0), (1, 3, 0), (2, 3, 0)]', '[(1, 2, 0), (1, 3, 0), (2, 3, 1)]',
@@ -1261,7 +1261,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
             sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
             sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
             sage: L.SeidelGraphs()[2]
-            {((1,2)(3,4), (1,3)(2,4))}
+            X°(E_2)
 
             sage: sorted(str(G.edges()) for G in L.SeidelGraphs().isotypes(3))
             ['[(1, 2, 0), (1, 3, 0), (2, 3, 0)]', '[(1, 2, 0), (1, 3, 0), (2, 3, 1)]']
@@ -2034,7 +2034,7 @@ class SignedGraphSpecies(LazyHyperoctahedralSpeciesElement, UniqueRepresentation
         sage: S[:3]
         [1,
          X°,
-         E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}]
+         E_2(X°) + X°(E_2)]
 
         The orders of the stabilizer groups of the molecular components
         of a homogeneous component do not depend on the order in which
@@ -2256,7 +2256,7 @@ class SeidelGraphSpecies(LazyHyperoctahedralSpeciesElement, UniqueRepresentation
         sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
         sage: G = L.SeidelGraphs()
         sage: G[:3]
-        [1, X°, {((1,2)(3,4), (1,3)(2,4))}]
+        [1, X°, X°(E_2)]
 
         The orders of the stabilizer groups of the molecular components
         of a homogeneous component do not depend on the order in which
