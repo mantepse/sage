@@ -472,7 +472,7 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
         sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
         sage: A = AtomicHyperoctahedralSpecies(2)
         sage: A
-        Atomic 2-species
+        Atomic 2-species in X
         sage: A.grading_set()
         Integer vectors of length 1
 
@@ -546,12 +546,10 @@ class AtomicHyperoctahedralSpecies(UniqueRepresentation, Parent):
 
             sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
             sage: AtomicHyperoctahedralSpecies(3)
-            Atomic 3-species
+            Atomic 3-species in X
             sage: AtomicHyperoctahedralSpecies(3, "X, Y")
             Atomic 3-species in X, Y
         """
-        if len(self._names) == 1:
-            return f"Atomic {self._r}-species"
         return f"Atomic {self._r}-species in {', '.join(self._names)}"
 
     def _an_element_(self):
@@ -1345,7 +1343,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
         sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
         sage: M = MolecularHyperoctahedralSpecies(2)
         sage: M
-        Molecular 2-species
+        Molecular 2-species in X
 
         sage: M = MolecularHyperoctahedralSpecies(2, "X, Y")
         sage: M
@@ -1413,13 +1411,12 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
 
             sage: from sage.rings.species_hyperoctahedral import MolecularHyperoctahedralSpecies
             sage: MolecularHyperoctahedralSpecies(3)
-            Molecular 3-species
+            Molecular 3-species in X
             sage: MolecularHyperoctahedralSpecies(3, "X, Y")
             Molecular 3-species in X, Y
         """
-        if len(self._indices._names) == 1:
-            return f"Molecular {self._r}-species"
-        return f"Molecular {self._r}-species in {', '.join(self._indices._names)}"
+        return (f"Molecular {self._r}-species in "
+                f"{', '.join(self._indices._names)}")
 
     def _first_ngens(self, n):
         r"""
@@ -2417,7 +2414,7 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
         sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
         sage: P = PolynomialHyperoctahedralSpecies(QQ, 2)
         sage: P
-        Polynomial 2-species over Rational Field
+        Polynomial 2-species in X over Rational Field
         sage: W = _wreath_group(2, 1)
         sage: P(W.subgroup([])) * P(W)
         X*X°
@@ -2504,12 +2501,10 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
 
             sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
             sage: PolynomialHyperoctahedralSpecies(ZZ, 3)
-            Polynomial 3-species over Integer Ring
+            Polynomial 3-species in X over Integer Ring
             sage: PolynomialHyperoctahedralSpecies(ZZ, 3, "X, Y")
             Polynomial 3-species in X, Y over Integer Ring
         """
-        if self._arity == 1:
-            return f"Polynomial {self._r}-species over {self.base_ring()}"
         names = self._indices._indices._names
         return (f"Polynomial {self._r}-species in {', '.join(names)} "
                 f"over {self.base_ring()}")
@@ -2664,7 +2659,7 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
             sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
             sage: P = PolynomialHyperoctahedralSpecies(ZZ, 2)
             sage: P.change_ring(QQ)
-            Polynomial 2-species over Rational Field
+            Polynomial 2-species in X over Rational Field
             sage: P.change_ring(ZZ) is P
             True
             sage: P2 = PolynomialHyperoctahedralSpecies(ZZ, 2, "X, Y")

@@ -1133,7 +1133,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
 
         sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
         sage: LazyHyperoctahedralSpecies(QQ, 2)
-        Lazy completion of Polynomial 2-species over Rational Field
+        Lazy completion of Polynomial 2-species in X over Rational Field
         sage: LazyHyperoctahedralSpecies(QQ, 2, "X, Y")
         Lazy completion of Polynomial 2-species in X, Y over Rational Field
 
