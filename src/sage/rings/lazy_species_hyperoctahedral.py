@@ -118,6 +118,13 @@ species.  For example, the species of signed graphs is available::
     sage: S[2]
     E_2(X°) + {((1,2)(3,4), (1,3)(2,4))}
 
+Likewise, the species of Seidel graphs, i.e., of labelings of the complete
+graph with elements of `Z_r` acted upon by switching, is not a type 1
+substitution.  For `r = 2` its isomorphism types are the two-graphs::
+
+    sage: L.SeidelGraphs()[2]
+    {((1,2)(3,4), (1,3)(2,4))}
+
 The *type 2 substitution* of Henderson is available as well: a lazy
 `r`-species `F`, possibly multisort, can be evaluated at ordinary lazy
 species `G_1, \dots, G_k`, where `k` is the number of sorts of `F`.
@@ -1111,6 +1118,46 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
             raise ValueError("the species of signed graphs is only implemented for a single sort")
         return SignedGraphSpecies(self, connected=bool(connected))
 
+    def SeidelGraphs(self):
+        r"""
+        Return the species of Seidel graphs.
+
+        A Seidel graph is a complete graph whose edges carry labels in
+        `Zmod(r)`.  A relabeling of a graph permutes the vertices,
+        whereas a sign change in the free `C_r`-set of labels adds `1`
+        to the labels of the adjacent edges.
+
+        For `r = 2`, identifying the label `1` of a pair of vertices
+        with the presence of an edge, this is the species of simple
+        graphs together with the action of the hyperoctahedral group by
+        relabelings and switchings.  Its isomorphism types are the
+        two-graphs.
+
+        Note that connected graphs do not form a subspecies, since
+        switching does not preserve connectedness: switching at a
+        vertex of the empty graph produces a star.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: L.SeidelGraphs()[2]
+            {((1,2)(3,4), (1,3)(2,4))}
+
+            sage: sorted(str(G.edges()) for G in L.SeidelGraphs().isotypes(3))
+            ['[(1, 2, 0), (1, 3, 0), (2, 3, 0)]', '[(1, 2, 0), (1, 3, 0), (2, 3, 1)]']
+
+        TESTS::
+
+            sage: LazyHyperoctahedralSpecies(QQ, 2, "X, Y").SeidelGraphs()
+            Traceback (most recent call last):
+            ...
+            ValueError: the species of Seidel graphs is only implemented for a single sort
+        """
+        if self._arity != 1:
+            raise ValueError("the species of Seidel graphs is only implemented for a single sort")
+        return SeidelGraphSpecies(self)
+
     def _require_unisort_r2(self, name):
         r"""
         Raise a ``ValueError`` unless ``self`` is a ring of unisort
@@ -1640,6 +1687,102 @@ def _oriented_cycle_group(n):
     return W.subgroup(gens)
 
 
+def _labeling_orbits(WG, E, r):
+    r"""
+    Iterate over the orbits of the edge labelings of a graph.
+
+    The labelings of the edges ``E`` of a graph on the vertices
+    `1, \ldots, n` are acted upon by the subgroup ``WG`` of the wreath
+    product `W(r, n) = C_r \wr S_n`: the induced permutation of the
+    blocks relabels the vertices, whereas a sign change in a block `i`
+    adds `\zeta` to the labels of the edges adjacent to vertex `i`.
+
+    INPUT:
+
+    - ``WG`` -- a subgroup of the wreath product `_wreath_group(r, n)`
+      on the standard domain
+
+    - ``E`` -- the sorted list of edges of a graph on the vertices
+      `1, \ldots, n`, where `n` is the number of blocks of ``WG``
+
+    - ``r`` -- positive integer; the order of the cyclic group `C_r`
+
+    OUTPUT: pairs ``(ell, H)``, where ``ell`` is a tuple of edge labels
+    in ``range(r)``, indexed by ``E``, and ``H`` is the stabilizer of
+    the corresponding labeled graph, a subgroup of ``WG``.
+
+    ALGORITHM:
+
+    The orbits are enumerated using breadth first search with the
+    generators of ``WG``, and the stabilizers are computed with GAP.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _labeling_orbits
+        sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
+        sage: W = _wreath_group(2, 3)
+        sage: E = [(1, 2), (1, 3), (2, 3)]
+        sage: [(ell, H.cardinality()) for ell, H in _labeling_orbits(W, E, 2)]
+        [((0, 0, 0), 12), ((0, 0, 1), 12)]
+    """
+    n = WG.degree() // r
+    index = {e: k for k, e in enumerate(E)}
+    m = len(E)
+    gens_WG = WG.gens()
+
+    # for each generator precompute the induced permutation of the
+    # edges together with the shifts of the edge labels: the label
+    # of edge k is shifted by the sum of the signs at the endpoints
+    # of the edge
+    gen_maps = []
+    for g in gens_WG:
+        sigma = [0] * (n + 1)
+        eps = [0] * (n + 1)
+        for i in range(1, n + 1):
+            p = g((i - 1) * r + 1)
+            sigma[i] = (p - 1) // r + 1
+            eps[i] = (p - 1) % r
+        srcs = [0] * m
+        shifts = [0] * m
+        for k, (i, j) in enumerate(E):
+            u, v = sigma[i], sigma[j]
+            if u > v:
+                u, v = v, u
+            target = index[(u, v)]
+            srcs[target] = k
+            shifts[target] = (eps[i] + eps[j]) % r
+        gen_maps.append((srcs, shifts))
+
+    # iterate over the orbits of the edge labelings under the
+    # subgroup, using breadth first search with its generators
+    seen = set()
+    for ell in itertools.product(range(r), repeat=m):
+        if ell in seen:
+            continue
+        orbit = [ell]
+        seen.add(ell)
+        frontier = [ell]
+        while frontier:
+            x = frontier.pop()
+            for srcs, shifts in gen_maps:
+                y = tuple((x[k] + h) % r for k, h in zip(srcs, shifts))
+                if y not in seen:
+                    seen.add(y)
+                    orbit.append(y)
+                    frontier.append(y)
+        # the stabilizer of the first element of the orbit, computed
+        # as the stabilizer of the point 1 in the permutation
+        # action of the generators on the orbit
+        to_gap = {x: i for i, x in enumerate(orbit, 1)}
+        perm_gens = [PermutationGroupElement([to_gap[tuple((x[k] + h) % r
+                                                            for k, h in zip(srcs, shifts))]
+                                              for x in orbit])
+                     for srcs, shifts in gen_maps]
+        OS = libgap.OrbitStabilizer(WG, 1, gens_WG, perm_gens)
+        H = PermutationGroup(gap_group=OS["stabilizer"], domain=WG.domain())
+        yield ell, H
+
+
 def _signed_graph_orbits(n, r, connected=False):
     r"""
     Iterate over the orbits of the signed graphs with ``n`` vertices.
@@ -1699,9 +1842,6 @@ def _signed_graph_orbits(n, r, connected=False):
     for G in underlying:
         E = sorted((min(u, v), max(u, v))
                    for u, v in G.edge_iterator(labels=False))
-        index = {e: k for k, e in enumerate(E)}
-        m = len(E)
-
         # the subgroup of the wreath product preserving the underlying
         # graph: the lifts of its automorphisms together with the
         # rotations of the blocks
@@ -1709,63 +1849,50 @@ def _signed_graph_orbits(n, r, connected=False):
         gens = [_lift_permutation(sigma, r) for sigma in A.gens()]
         gens.extend(rotations)
         WG = W.subgroup(gens)
-        gens_WG = WG.gens()
 
-        # for each generator precompute the induced permutation of the
-        # edges together with the shifts of the edge labels: the label
-        # of edge k is shifted by the sum of the signs at the endpoints
-        # of the edge
-        gen_maps = []
-        for g in gens_WG:
-            sigma = [0] * (n + 1)
-            eps = [0] * (n + 1)
-            for i in range(1, n + 1):
-                p = g((i - 1) * r + 1)
-                sigma[i] = (p - 1) // r + 1
-                eps[i] = (p - 1) % r
-            srcs = [0] * m
-            shifts = [0] * m
-            for k, (i, j) in enumerate(E):
-                u, v = sigma[i], sigma[j]
-                if u > v:
-                    u, v = v, u
-                target = index[(u, v)]
-                srcs[target] = k
-                shifts[target] = (eps[i] + eps[j]) % r
-            gen_maps.append((srcs, shifts))
-
-        # iterate over the orbits of the edge labelings under the
-        # subgroup, using breadth first search with its generators
-        seen = set()
-        for ell in itertools.product(range(r), repeat=m):
-            if ell in seen:
-                continue
-            orbit = [ell]
-            seen.add(ell)
-            frontier = [ell]
-            while frontier:
-                x = frontier.pop()
-                for srcs, shifts in gen_maps:
-                    y = tuple((x[k] + h) % r for k, h in zip(srcs, shifts))
-                    if y not in seen:
-                        seen.add(y)
-                        orbit.append(y)
-                        frontier.append(y)
-            # the stabilizer of the first element of the orbit, computed
-            # as the stabilizer of the point 1 in the permutation
-            # action of the generators on the orbit
-            to_gap = {x: i for i, x in enumerate(orbit, 1)}
-            perm_gens = [PermutationGroupElement([to_gap[tuple((x[k] + h) % r
-                                                                for k, h in zip(srcs, shifts))]
-                                                  for x in orbit])
-                         for srcs, shifts in gen_maps]
-            OS = libgap.OrbitStabilizer(WG, 1, gens_WG, perm_gens)
-            H = PermutationGroup(gap_group=OS["stabilizer"], domain=WG.domain())
+        for ell, H in _labeling_orbits(WG, E, r):
             yield G, ell, H
 
 
+def _seidel_graph_orbits(n, r):
+    r"""
+    Iterate over the switching orbits of the graphs with ``n`` vertices.
+
+    A graph is a labeling of the pairs of `\{1, \ldots, n\}` with
+    labels in ``range(r)``.  The graphs are acted upon by the
+    hyperoctahedral group `W(r, n) = C_r \wr S_n`: the induced
+    permutation of the blocks relabels the vertices, whereas a sign
+    change in a block `i` adds `1` to the labels of the pairs adjacent
+    to vertex `i`.
+
+    For `r = 2`, identifying the label `1` of a pair with the presence
+    of an edge, this is the action of `W(2, n)` on the simple graphs
+    with `n` vertices by relabelings and switchings.
+
+    INPUT:
+
+    - ``n`` -- positive integer; the number of vertices
+
+    - ``r`` -- positive integer; the order of the cyclic group `C_r`
+
+    OUTPUT: pairs ``(ell, H)``, where ``ell`` is a tuple of labels in
+    ``range(r)``, indexed by the sorted pairs of `\{1, \ldots, n\}`, and
+    ``H`` is the stabilizer of the corresponding graph, a subgroup of
+    `_wreath_group(r, n)`.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import _seidel_graph_orbits
+        sage: [(ell, H.cardinality()) for ell, H in _seidel_graph_orbits(3, 2)]
+        [((0, 0, 0), 12), ((0, 0, 1), 12)]
+    """
+    W = _wreath_group(r, n)
+    E = sorted(itertools.combinations(range(1, n + 1), 2))
+    yield from _labeling_orbits(W, E, r)
+
+
 class SignedGraphSpecies(LazyHyperoctahedralSpeciesElement, UniqueRepresentation,
-                          metaclass=InheritComparisonClasscallMetaclass):
+                         metaclass=InheritComparisonClasscallMetaclass):
     r"""
     The species of signed graphs.
 
@@ -1979,3 +2106,175 @@ class SignedGraphSpecies(LazyHyperoctahedralSpeciesElement, UniqueRepresentation
         if self._connected:
             return s.log()
         return s
+
+
+class SeidelGraphSpecies(LazyHyperoctahedralSpeciesElement, UniqueRepresentation,
+                         metaclass=InheritComparisonClasscallMetaclass):
+    r"""
+    The species of Seidel graphs.
+
+    A Seidel graph is a complete graph in which every edge carries a
+    label in `Zmod(r)`.  The `r`-species of Seidel graphs assigns to a
+    free `C_r`-set the set of all graphs whose vertices are its
+    `C_r`-orbits.  A relabeling permutes the vertices, whereas a sign
+    change adds `1` to the labels of the adjacent edges.
+
+    For `r = 2`, identifying the label `1` of a pair of vertices with
+    the presence of an edge, this is the species of simple graphs
+    together with the action of the hyperoctahedral group `W(2, n)` by
+    relabelings and switchings: a switch at a vertex complements the
+    edges adjacent to it.  The isomorphism types are the switching
+    classes of graphs, i.e., the two-graphs.
+
+    Since switching does not preserve connectedness, connected graphs do
+    not form a subspecies.  Since the stabilizer of a graph is in
+    general not a wreath product, this is an example of an `r`-species
+    which is not a type 1 substitution of an ordinary species.
+
+    EXAMPLES::
+
+        sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+        sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+        sage: G = L.SeidelGraphs()
+        sage: G[:3]
+        [1, X°, {((1,2)(3,4), (1,3)(2,4))}]
+
+        The orders of the stabilizer groups of the molecular components
+        of a homogeneous component do not depend on the order in which
+        the components are computed, in contrast to the choice of their
+        generators::
+
+        sage: [sorted((M.permutation_group()[0].order(), c) for M, c in G[n])
+        ....:  for n in [3, 4]]
+        [[(12, 2)], [(8, 1), (48, 2)]]
+
+    The isomorphism types are representatives of the switching classes
+    of simple graphs, i.e., of the two-graphs.  They are complete graphs
+    with vertices `1, \ldots, n` whose edges carry labels in `Zmod(r)`;
+    for `r = 2` the label `1` of a pair of vertices indicates the
+    presence of an edge::
+
+        sage: sorted(str(g.edges()) for g in G.isotypes(3))
+        ['[(1, 2, 0), (1, 3, 0), (2, 3, 0)]', '[(1, 2, 0), (1, 3, 0), (2, 3, 1)]']
+
+    There are `r^{\binom{n}{2}}` graphs with `n` vertices, so the
+    generating series has a closed form::
+
+        sage: G.generating_series().truncate(7)
+        1 + 1/2*X + 1/4*X^2 + 1/6*X^3 + 1/6*X^4 + 4/15*X^5 + 32/45*X^6
+
+        sage: G.isotype_generating_series()[:7]
+        [1, 1, 1, 2, 3, 7, 16]
+
+    For `r = 1` this is the species of sets::
+
+        sage: LazyHyperoctahedralSpecies(QQ, 1).SeidelGraphs()[:4]
+        [1, X, E_2(X), E_3(X)]
+
+    TESTS::
+
+        sage: TestSuite(G).run(skip=['_test_category', '_test_pickling'])
+    """
+    def __init__(self, parent):
+        r"""
+        Initialize the species of Seidel graphs.
+
+        INPUT:
+
+        - ``parent`` -- a lazy species ring
+
+        TESTS::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: G = L.SeidelGraphs()
+            sage: TestSuite(G).run(skip=['_test_category', '_test_pickling'])
+
+            sage: G is L.SeidelGraphs()
+            True
+        """
+        P = parent._laurent_poly_ring
+
+        def coefficient(n):
+            if not n:
+                return P.one()
+            return sum(P(H) for _, H in _seidel_graph_orbits(n, P._r))
+
+        S = parent(coefficient)
+        super().__init__(parent, S._coeff_stream)
+
+    def _repr_(self):
+        r"""
+        Return a string representation of ``self``.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: LazyHyperoctahedralSpecies(QQ, 2).SeidelGraphs()  # indirect doctest
+            Seidel graph species
+        """
+        return "Seidel graph species"
+
+    def isotypes(self, labels):
+        r"""
+        Iterate over the isomorphism types of Seidel graphs with the
+        given number of vertices.
+
+        The isomorphism types are complete graphs with vertices
+        `1, \ldots, n`, whose edge labels are in `Zmod(r)`.  For `r = 2`,
+        identifying the label `1` of a pair of vertices with the
+        presence of an edge, these are representatives of the switching
+        classes of simple graphs, i.e., of the two-graphs.
+
+        INPUT:
+
+        - ``labels`` -- the number of vertices
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: sorted(str(G.edges()) for G in L.SeidelGraphs().isotypes(2))
+            ['[(1, 2, 0)]']
+            sage: sorted(str(G.edges()) for G in L.SeidelGraphs().isotypes(4))
+            ['[(1, 2, 0), (1, 3, 0), (1, 4, 0), (2, 3, 0), (2, 4, 0), (3, 4, 0)]',
+             '[(1, 2, 0), (1, 3, 0), (1, 4, 0), (2, 3, 0), (2, 4, 0), (3, 4, 1)]',
+             '[(1, 2, 0), (1, 3, 0), (1, 4, 0), (2, 3, 1), (2, 4, 1), (3, 4, 1)]']
+
+            sage: list(L.SeidelGraphs().isotypes(0))
+            [Graph on 0 vertices]
+        """
+        if labels not in ZZ:
+            raise NotImplementedError("isotypes with given labels are currently not supported")
+        if not labels:
+            yield Graph([], immutable=True)
+            return
+        r = self.parent()._laurent_poly_ring._r
+        E = sorted(itertools.combinations(range(1, labels + 1), 2))
+        for ell, _ in _seidel_graph_orbits(labels, r):
+            result = Graph([(u, v, Zmod(r)(k)) for (u, v), k in zip(E, ell)])
+            result.add_vertices(range(1, labels + 1))
+            yield result.copy(immutable=True)
+
+    def generating_series(self):
+        r"""
+        Return the generating series of the species of Seidel graphs.
+
+        There are `r^{\binom{n}{2}}` graphs with `n` vertices, so the
+        coefficient of `X^n` is `\frac{r^{\binom{n}{2}}}{n! r^n}`.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: L.SeidelGraphs().generating_series().truncate(7)
+            1 + 1/2*X + 1/4*X^2 + 1/6*X^3 + 1/6*X^4 + 4/15*X^5 + 32/45*X^6
+
+            sage: LazyHyperoctahedralSpecies(QQ, 3).SeidelGraphs().generating_series().truncate(5)
+            1 + 1/3*X + 1/6*X^2 + 1/6*X^3 + 3/8*X^4
+        """
+        P = self.parent()
+        r = P._laurent_poly_ring._r
+        L = LazyPowerSeriesRing(P.base_ring().fraction_field(),
+                                P._laurent_poly_ring._indices._indices.variable_names())
+        return L(lambda n: ZZ(r) ** ZZ(n).binomial(2) / ZZ(n).factorial() / ZZ(r) ** n)
