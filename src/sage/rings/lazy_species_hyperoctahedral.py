@@ -156,6 +156,24 @@ of species, up to the choice of sorts::
     sage: L1(CyclicPermutationGroup(4))(E2)[8]
     {((7,8), (1,3,5,7)(2,4,6,8))}
 
+Henderson's trees can be implemented as follows.  First, using
+Proposition 5.3, we define the trees for the ordinary case::
+
+    sage: L1 = LazyCombinatorialSpecies(QQ, "X")
+    sage: X1 = L1._first_ngens(1)[0]
+    sage: E = L1.Sets()
+    sage: T1 = L1.undefined()
+    sage: T1.define(X1 + E.restrict(2)(T1))
+    sage: [T1.generating_series()[n]*factorial(n) for n in range(4)]
+    [0, 1, 1, 4]
+
+Then we use Proposition 5.5.::
+
+    sage: T = L.undefined()
+    sage: T.define((1 + T) * E(Xo).restrict(1)(T1))
+    sage: [T.generating_series()[n]*factorial(n)*2^n for n in range(4)]
+    [0, 1, 5, 47]
+
 REFERENCES:
 
 .. [Henderson2004] Anthony Henderson.
@@ -166,6 +184,7 @@ REFERENCES:
 AUTHORS:
 
 - Martin Rubey (2025): initial version
+
 """
 # ****************************************************************************
 #       Copyright (C) 2025 Martin Rubey <martin.rubey@tuwien.ac.at>
