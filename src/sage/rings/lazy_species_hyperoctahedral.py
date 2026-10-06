@@ -179,6 +179,8 @@ AUTHORS:
 import itertools
 from collections import defaultdict
 
+from sage.categories.tensor import tensor
+from sage.combinat.sf.sf import SymmetricFunctions
 from sage.graphs.graph import Graph
 from sage.graphs.graph_generators import graphs
 from sage.groups.perm_gps.constructor import PermutationGroupElement
@@ -193,10 +195,12 @@ from sage.rings.integer_ring import ZZ
 from sage.rings.rational_field import QQ
 from sage.rings.lazy_series import LazyCompletionGradedAlgebraElement
 from sage.rings.lazy_series_ring import (LazyCompletionGradedAlgebra,
-                                         LazyPowerSeriesRing)
+                                         LazyPowerSeriesRing,
+                                         LazySymmetricFunctions)
 from sage.rings.lazy_species import (LazyCombinatorialSpecies,
                                      LazyCombinatorialSpeciesElement,
                                      weighted_vector_compositions)
+from sage.rings.sf_hyperoctahedral import HyperoctahedralSymmetricFunctions
 from sage.rings.species import PolynomialSpecies
 from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
 from sage.data_structures.stream import (Stream_exact,
@@ -299,6 +303,102 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
         else:
             def coefficient(n):
                 return sum(c * P.base_ring().prod(v ** d for v, d in zip(L.gens(), M.grade()))
+                           for M, c in self[n].monomial_coefficients().items())
+        return L(coefficient)
+
+    def cycle_index_series(self):
+        r"""
+        Return the cycle index series of ``self``.
+
+        The coefficient of degree `n` is the sum of the cycle indices of
+        the molecular `r`-species of ``self[n]``, in the power sum basis
+        of the hyperoctahedral symmetric functions
+        :mod:`sage.rings.sf_hyperoctahedral` over the fraction field of
+        the base ring, see
+        :meth:`~sage.rings.species_hyperoctahedral.MolecularHyperoctahedralSpecies.Element.cycle_index`.
+
+        For multisort species, the result lives in the lazy completion of
+        a tensor product of hyperoctahedral symmetric functions, one
+        factor per sort, and is graded by the total degree.
+
+        EXAMPLES::
+
+            sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
+            sage: from sage.rings.lazy_species import LazyCombinatorialSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
+            sage: L = LazyHyperoctahedralSpecies(QQ, 2)
+            sage: Xo = L(_wreath_group(2, 1))
+            sage: E2Xo = L(_wreath_young_subgroup(2, [2]))
+            sage: Z = (Xo + E2Xo).cycle_index_series()
+            sage: Z
+            (1/2*p_1(ζ^1)+1/2*p_1(ζ^0)) + (1/8*p_{1,1}(ζ^1)+1/4*p_2(ζ^1)+1/4*p_1(ζ^0)*p_1(ζ^1)+1/8*p_{1,1}(ζ^0)+1/4*p_2(ζ^0)) + O^7
+            sage: Z[1]
+            1/2*p_1(ζ^1) + 1/2*p_1(ζ^0)
+            sage: Z[2]
+            1/8*p_{1,1}(ζ^1) + 1/4*p_2(ζ^1) + 1/4*p_1(ζ^0)*p_1(ζ^1) + 1/8*p_{1,1}(ζ^0) + 1/4*p_2(ζ^0)
+
+        In particular, the cycle index series of the `r`-species of
+        sets `E^{(r)} = E(X^\circ)` is Henderson's
+        `exp(\sum_i \sum_a p_i(\zeta^a)/(r i))` [Henderson2004, (4.1)]_:
+
+            sage: E = LazyCombinatorialSpecies(QQ, "Z").Sets()
+            sage: ZE = E(Xo).cycle_index_series()
+            sage: ZE[3]
+            1/48*p_{1,1,1}(ζ^1) + 1/8*p_{2,1}(ζ^1) + 1/6*p_3(ζ^1) + 1/16*p_1(ζ^0)*p_{1,1}(ζ^1) + 1/8*p_1(ζ^0)*p_2(ζ^1) + 1/16*p_{1,1}(ζ^0)*p_1(ζ^1) + 1/48*p_{1,1,1}(ζ^0) + 1/8*p_2(ζ^0)*p_1(ζ^1) + 1/8*p_{2,1}(ζ^0) + 1/6*p_3(ζ^0)
+
+        Infinite series are supported::
+
+            sage: F = 1/(2 - Xo)
+            sage: ZF = F.cycle_index_series()
+            sage: ZF[1]
+            1/8*p_1(ζ^1) + 1/8*p_1(ζ^0)
+            sage: ZF[2]
+            1/32*p_{1,1}(ζ^1) + 1/16*p_1(ζ^0)*p_1(ζ^1) + 1/32*p_{1,1}(ζ^0)
+
+        For multisort species, the result is graded by the total
+        degree::
+
+            sage: from sage.rings.species_hyperoctahedral import AtomicHyperoctahedralSpecies
+            sage: LXY = LazyHyperoctahedralSpecies(QQ, 2, "X, Y")
+            sage: AXY = AtomicHyperoctahedralSpecies(2, "X, Y")
+            sage: d0 = AXY(_wreath_group(2, 1), {0: [1, 2]})
+            sage: d1 = AXY(_wreath_group(2, 1), {1: [1, 2]})
+            sage: W = _wreath_young_subgroup(2, [1, 1])
+            sage: dd = AXY(W.subgroup([[(1, 2), (3, 4)]]), {0: [1, 2], 1: [3, 4]})
+            sage: ZXY = (LXY(d0) + LXY(d1) + LXY(dd)).cycle_index_series()
+            sage: ZXY[1]
+            1/2*1 # p_1(ζ^1) + 1/2*1 # p_1(ζ^0) + 1/2*p_1(ζ^1) # 1 + 1/2*p_1(ζ^0) # 1
+            sage: ZXY[2]
+            1/2*p_1(ζ^1) # p_1(ζ^1) + 1/2*p_1(ζ^0) # p_1(ζ^0)
+
+        The coefficient of the key `([1, \dots, 1], [], \dots, [])` of
+        ``Z[n]`` is the coefficient of `x^n` of the generating series,
+        and the sum of the coefficients of ``Z[n]`` is the coefficient
+        of `x^n` of the isotype generating series::
+
+            sage: from sage.combinat.partition_tuple import PartitionTuples_level
+            sage: Pt = PartitionTuples_level(2)
+            sage: Z[2].coefficient(Pt([[1, 1], []])) == (Xo + E2Xo).generating_series()[2]
+            True
+            sage: sum(Z[2].coefficients()) == (Xo + E2Xo).isotype_generating_series()[2]
+            True
+        """
+        P = self.parent()
+        r = P._internal_poly_ring.base_ring()._r
+        H = HyperoctahedralSymmetricFunctions(
+            r, SymmetricFunctions(P.base_ring().fraction_field()).powersum())
+        if P._arity == 1:
+            L = LazySymmetricFunctions(H)
+
+            def coefficient(n):
+                return sum(c * M.cycle_index(parent=H)
+                           for M, c in self[n].monomial_coefficients().items())
+        else:
+            T = tensor([H for _ in range(P._arity)])
+            L = LazySymmetricFunctions(T)
+
+            def coefficient(n):
+                return sum(c * M.cycle_index(parent=T)
                            for M, c in self[n].monomial_coefficients().items())
         return L(coefficient)
 
