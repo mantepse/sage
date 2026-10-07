@@ -9,10 +9,13 @@ way as the ring of polynomial species is completed in
 degree `n`, where the degree is the number of `C_r`-blocks.  Addition
 and multiplication are performed coefficientwise.
 
-In addition, the *type 1 substitution* of Henderson is available: an
-ordinary lazy species `F`, possibly multisort, can be evaluated at lazy
-`r`-species `G_1, \dots, G_k` of the same sort, where `k` is the number
-of sorts of `F`.  The result is again a lazy `r`-species.
+In addition, both kinds of substitutions introduced by Henderson are
+available: an ordinary lazy species `F`, possibly multisort, can be
+evaluated at lazy `r`-species `G_1, \dots, G_k`, where `k` is the
+number of sorts of `F`.  Also, an `r`-species `F`, possibly multisort,
+can be composed with ordinary species `G_1, \dots, G_k`, where `k` is
+again the number of sorts of `F`. In both cases, the result is again a
+lazy `r`-species.
 
 EXAMPLES:
 
@@ -71,27 +74,32 @@ multiplication, and is associative::
 
     sage: from sage.groups.perm_gps.permgroup_named import SymmetricGroup
     sage: L1 = LazyCombinatorialSpecies(QQ, "Z")
-    sage: E2 = L1(SymmetricGroup(2))
-    sage: E2(X + Xo)[2]
+    sage: E_2 = L1(SymmetricGroup(2))
+    sage: E_2(X + Xo)[2]
     E_2(X) + X*X° + E_2(X°)
-    sage: E2(2*X)[2]
+    sage: E_2(2*X)[2]
     2*E_2(X) + X^2
-    sage: E2(Xo)[2]
+    sage: E_2(Xo)[2]
     E_2(X°)
-    sage: E3 = L1(SymmetricGroup(3))
-    sage: E2(E3(F))[4] == E2(E3)(F)[4]
+    sage: E_3 = L1(SymmetricGroup(3))
+    sage: E_2(E_3(F))[4] == E_2(E_3)(F)[4]
     True
 
-The generating series of a type 1 substitution is the substitution of
-the generating series [Henderson2004, Section 4]::
+The generating series of a substitution is the substitution of the
+generating series, see [Henderson2004]_, Equation (1.5), Corollary 4.7
+and Corollary 4.10::
+
+    sage: OC = L.OrientedCycles()
+    sage: E1 = E.restrict(1)
+    sage: OC(E1).generating_series() - OC.generating_series()(E1.generating_series())
+    O(Z^7)
+    sage: E(OC).generating_series() - E.generating_series()(OC.generating_series())
+    O(X^7)
 
     sage: E(X + Xo).generating_series()
     1 + 3/2*X + 9/8*X^2 + 9/16*X^3 + 27/128*X^4 + 81/1280*X^5 + 81/5120*X^6 + O(X^7)
-    sage: C = L1.Cycles()
-    sage: C(Xo).generating_series()
-    1/2*X + 1/8*X^2 + 1/24*X^3 + 1/64*X^4 + 1/160*X^5 + 1/384*X^6 + 1/896*X^7 + O(X^8)
-    sage: E(C(Xo)).generating_series()
-    1 + 1/2*X + 1/4*X^2 + 1/8*X^3 + 1/16*X^4 + 1/32*X^5 + 1/64*X^6 + O(X^7)
+    sage: E(X + Xo).generating_series() - E.generating_series()((X + Xo).generating_series())
+    O(X^7)
 
 Multisort `r`-species are supported::
 
@@ -108,7 +116,7 @@ of species::
     sage: L1r.<X1> = LazyHyperoctahedralSpecies(QQ, 1)
     sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
     sage: P1 = PolynomialHyperoctahedralSpecies(QQ, 1, "X1")
-    sage: E2(X1)[2] == L1r(P1(SymmetricGroup(2)))[2]
+    sage: E_2(X1)[2] == L1r(P1(SymmetricGroup(2)))[2]
     True
 
 Not every lazy `r`-species is a type 1 substitution of an ordinary
@@ -125,37 +133,6 @@ substitution.  For `r = 2` its isomorphism types are the two-graphs::
     sage: L.SeidelGraphs()[2]
     X°(E_2)
 
-The *type 2 substitution* of Henderson is available as well: a lazy
-`r`-species `F`, possibly multisort, can be evaluated at ordinary lazy
-species `G_1, \dots, G_k`, where `k` is the number of sorts of `F`.
-Here the points of the `C_r`-orbits are replaced by the points of the
-inner structures attached to them.  The result is again a lazy
-`r`-species, with the sorts of the args::
-
-    sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_young_subgroup
-    sage: E2Xo = L(_wreath_young_subgroup(2, [2]))
-    sage: E2Xo(L1(SymmetricGroup(1)))[2]
-    E_2(Z°)
-    sage: sorted((M.permutation_group()[0].order(), c) for M, c in E2Xo(2*E2)[4])
-    [(16, 1), (32, 2)]
-
-In contrast to the type 1 substitution, the generating series of a
-type 2 substitution is in general not the substitution of the
-generating series [Henderson2004, Section 4]::
-
-    sage: [E2Xo(E2).generating_series()[n] for n in range(5)]
-    [0, 0, 0, 0, 1/32]
-
-For `r = 1` the type 2 substitution reduces to the usual composition
-of species, up to the choice of sorts::
-
-    sage: L1r.<X1> = LazyHyperoctahedralSpecies(QQ, 1)
-    sage: C4 = L1r(CyclicPermutationGroup(4))
-    sage: C4(E2)[8]
-    {((7,8), (1,3,5,7)(2,4,6,8))}
-    sage: L1(CyclicPermutationGroup(4))(E2)[8]
-    {((7,8), (1,3,5,7)(2,4,6,8))}
-
 Henderson's trees can be implemented as follows.  First, using
 Proposition 5.3, we define the trees for the ordinary case::
 
@@ -167,7 +144,7 @@ Proposition 5.3, we define the trees for the ordinary case::
     sage: [T1.generating_series()[n]*factorial(n) for n in range(4)]
     [0, 1, 1, 4]
 
-Then we use Proposition 5.5.::
+Then we use Proposition 5.5::
 
     sage: T = L.undefined()
     sage: T.define((1 + T) * E(Xo).restrict(1)(T1))
@@ -183,11 +160,11 @@ REFERENCES:
 
 AUTHORS:
 
-- Martin Rubey (2025): initial version
+- Martin Rubey (2026): initial version
 
 """
 # ****************************************************************************
-#       Copyright (C) 2025 Martin Rubey <martin.rubey@tuwien.ac.at>
+#       Copyright (C) 2026 Martin Rubey <martin.rubey@tuwien.ac.at>
 #
 #  Distributed under the terms of the GNU General Public License (GPL)
 #  as published by the Free Software Foundation; either version 2 of
@@ -512,7 +489,7 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
 
     def __call__(self, *args):
         r"""
-        Return the type `2` substitution of ``args`` into ``self``.
+        Return the substitution of ``args`` into ``self``.
 
         This implements the composition `F \circ_2 (G_1, \ldots, G_k)`
         of [Henderson2004]_, Equation (4.8), where ``self`` is a lazy
@@ -520,127 +497,62 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
         species, see
         :meth:`~sage.rings.species_hyperoctahedral.PolynomialHyperoctahedralSpecies.Element.__call__`.
 
-        The args may be multisort, in which case the composite is a
-        `C_r`-equivariant species with the sorts of the args, as in the
-        ordinary composition of species: the sort of a point of the
-        composite is the sort of the corresponding point of the inner
-        structure attached to the block.
+        Substitution is associative, and linear in the outer species.
 
-        The result is a lazy `C_r`-equivariant species with the sorts
-        of the args over the common base ring of ``self`` and the args,
-        so that the weights of both are available.
+        The arguments may be multisort, in which case the composite is
+        an `r`-species in the sorts of the arguments.  This is
+        analogous to ordinary composition of species.
 
         EXAMPLES:
 
             sage: from sage.rings.lazy_species_hyperoctahedral import LazyHyperoctahedralSpecies
-            sage: from sage.rings.lazy_species import LazyCombinatorialSpecies
-            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group, _wreath_young_subgroup
-            sage: from sage.rings.species_hyperoctahedral import PolynomialHyperoctahedralSpecies
+            sage: from sage.groups.perm_gps.hyperoctahedral_group import _wreath_group
             sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
             sage: Xo = L(_wreath_group(2, 1))
             sage: L1.<Z> = LazyCombinatorialSpecies(QQ)
-            sage: E2 = L1(SymmetricGroup(2))
-            sage: E3 = L1(SymmetricGroup(3))
 
-        Substituting `E_2` into the singleton `X^\circ` with full cyclic
-        stabilizer gives the cyclic composition, whereas substituting into
-        the free singleton `X` forgets the `C_r`-action of the inner
-        orbits.
-        The atoms are only canonical up to the choice of generators, so
-        we list the orders of the molecular groups where the display
-        would depend on that choice::
+        Substituting an ordinary species into an `r`-species yields
+        the argument as an `r`-species::
 
-            sage: Xo(E2)[2]
-            Z°(E_2)
-            sage: [(M.permutation_group()[0].order(), c) for M, c in Xo(E3)[3]]
-            [(12, 1)]
-            sage: Xf = L(_wreath_group(2, 1).subgroup([]))
-            sage: Xf(E2)[2]
-            E_2(Z)
-            sage: Xf(Z + Z^2)[1:3]
-            [Z, Z^2]
+            sage: X(Z + Z^2)
+            Z + Z^2 + O^8
+            sage: Xo(Z + Z^2)
+            Z° + {((1,2)(3,4),)} + O^8
 
-        Substituting `2 E_2` into the set-like species `E_2(X^\circ)`
-        of [Henderson2004]_, Example 3.8::
+        Substitution is compatible with passing to the cycle index
+        series and the generating series, see [Braunsteiner2010]_,
+        Theorem 4.1.9 and [Henderson2004]_, Equation (1.5), Corollary
+        4.7 and Corollary 4.10.  For example::
 
-            sage: E2Xo = L(_wreath_young_subgroup(2, [2]))
-            sage: sorted((M.permutation_group()[0].order(), c) for M, c in E2Xo(2*E2)[4])
-            [(16, 1), (32, 2)]
+            sage: OC = L.OrientedCycles()
+            sage: E = L1.Sets()
+            sage: E1 = E.restrict(1)
+            sage: OC(E1).generating_series() - OC.generating_series()(E1.generating_series())
+            O(Z^7)
+            sage: E(OC).generating_series() - E.generating_series()(OC.generating_series())
+            O(X^7)
 
-        In contrast to the type 1 substitution, the exponential
-        generating series of a type 2 substitution is in general not
-        the substitution of the generating series::
-
-            sage: F = E2Xo(E2)
-            sage: [F.generating_series()[n] for n in range(5)]
-            [0, 0, 0, 0, 1/32]
-
-        Weighted species are supported, see Equation (4.8) of
-        [Henderson2004]_ and [Braunsteiner2010]_, Definition 4.1.3.
-        The composite carries the weights of both ``self`` and the
-        args, so the weights of ``self`` are re-based to their common
-        base ring::
+        Weighted species are supported.  The composite carries the
+        weights of both ``self`` and the arguments, so the weights of
+        ``self`` are re-based to their common base ring::
 
             sage: R.<q> = QQ[]
             sage: L1q.<Zq> = LazyCombinatorialSpecies(R)
-            sage: E2Xo((1+q)*Zq)[2]
-            (q^2+1)*E_2(Zq°) + q*Zq°^2
+            sage: OC((1+q)*Zq).truncate(4)
+            ((q+1)*Zq°) + ((q^2+2*q+1)*Zq°^2) + ((q^3+q^2+q+1)*E_2(Zq°)*Zq°+(q^2+q)*Zq°^3)
 
-        Substitution is linear in the outer species, and each sort of a
-        multisort species can be substituted with its own species; the
-        two sorts of `E_2(X^\circ, Y^\circ)` below carry `E_2` and
-        `E_3`-structures.  The result has the sorts of the args::
-
-            sage: PXY = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
-            sage: LXY = LazyHyperoctahedralSpecies(QQ, 2, "X, Y")
-            sage: W22 = _wreath_young_subgroup(2, [2])
-            sage: A = LXY(PXY(W22, {0: [1, 2, 3, 4], 1: []}))
-            sage: B = LXY(PXY(W22, {0: [], 1: [1, 2, 3, 4]}))
-            sage: F = (A + B)(E2, E3)
-            sage: sorted((tuple(M.grade()), M.permutation_group()[0].order())
-            ....:     for n in [4, 6] for M, c in F[n])
-            [((4,), 32), ((6,), 288)]
-
-        The args may be multisort; the composite then has their sorts.
-        Substituting the product of the singletons of two sorts into
-        `E_2(X^\circ)` gives a structure with four orbits, two of each
-        sort::
-
-            sage: L2.<U, V> = LazyCombinatorialSpecies(QQ)
-            sage: E2Xo(U * V)[4]
-            {((3,4)(7,8), (1,2)(5,6), (1,3)(2,4)(5,7)(6,8)): ({1, 2, 3, 4}, {5, 6, 7, 8})}
-            sage: [(tuple(M.grade()), M.permutation_group()[0].order()) for M, c in E2Xo(U * V)[4]]
-            [((2, 2), 8)]
-
-        For `r = 1` the type 2 substitution specializes to the ordinary
+        For `r = 1` the composition specializes to the ordinary
         composition of species::
 
             sage: L1r.<X1> = LazyHyperoctahedralSpecies(QQ, 1)
-            sage: C4 = L1r(CyclicPermutationGroup(4))
-            sage: C4(E2)[8]
+            sage: E_2 = L1(SymmetricGroup(2))
+            sage: C_4 = L1r(CyclicPermutationGroup(4))
+            sage: C_4(E_2)[8]
             {((7,8), (1,3,5,7)(2,4,6,8))}
-            sage: L1(CyclicPermutationGroup(4))(E2)[8]
+            sage: L1(CyclicPermutationGroup(4))(E_2)[8]
             {((7,8), (1,3,5,7)(2,4,6,8))}
 
-        The substitution is associative with the ordinary composition of
-        species, and it is compatible with the type 1 substitution
-        [Henderson2004]_, Equation (4.9)::
-
-            sage: (Xo(E2))(E3)[6] == Xo(E2(E3))[6]
-            True
-            sage: E2(Xo(E2))[4] == E2Xo(E2)[4]
-            True
-
-        Substituting the singleton `X` forgets the `C_r`-action of the
-        inner orbits, and a zero argument annihilates all structures
-        using it::
-
-            sage: E2Xo(Z)[2]
-            E_2(Z°)
-            sage: (Xo + E2Xo)(Z)[1:3]
-            [Z°, E_2(Z°)]
-            sage: (Xo + E2Xo)(L1.zero())
-            0
+        TESTS:
 
         Check the case of arity zero::
 
@@ -650,37 +562,31 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
             sage: (5*L0.one())()
             5
 
-        TESTS::
-
-            sage: E2Xo()
+            sage: Xo()
             Traceback (most recent call last):
             ...
             ValueError: number of args must match arity of self
-            sage: E2Xo(2)
+            sage: Xo(2)
             Traceback (most recent call last):
             ...
             ValueError: all args must be ordinary lazy species
-            sage: E2Xo(E2, E2)
+            sage: Xo(E_2, E_2)
             Traceback (most recent call last):
             ...
             ValueError: number of args must match arity of self
-            sage: E2Xo(Xo)
+            sage: Xo(Xo)
             Traceback (most recent call last):
             ...
             ValueError: all args must be ordinary lazy species
-            sage: E2Xo(L1.one())
+            sage: Xo(L1.one())
             Traceback (most recent call last):
             ...
             ValueError: can only compose with a positive valuation series
-            sage: L1w.<W> = LazyCombinatorialSpecies(QQ)
-            sage: A(E2, W)
-            Traceback (most recent call last):
-            ...
-            ValueError: unable to find a common parent for the substituted species (E_2, W)
 
-            sage: E2Xo(E2)._test_structures()
-            sage: E2Xo(2*E2)._test_structures()
-            sage: TestSuite(Xo(E2)).run(skip=['_test_category', '_test_pickling'])
+            sage: E_2(Xo(E_2))._test_structures()
+            sage: E_2(Xo(2*E_2))._test_structures()
+            sage: TestSuite(Xo(E_2)).run(skip=['_test_category', '_test_pickling'])
+
         """
         if not args and self.parent()._arity == 0:
             return self
@@ -713,22 +619,22 @@ class Type1CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
             sage: L.<X> = LazyHyperoctahedralSpecies(QQ, 2)
             sage: Xo = L(_wreath_group(2, 1))
             sage: L1 = LazyCombinatorialSpecies(QQ, "Z")
-            sage: E2 = L1(SymmetricGroup(2))
-            sage: F = E2(X + Xo)
+            sage: E_2 = L1(SymmetricGroup(2))
+            sage: F = E_2(X + Xo)
             sage: TestSuite(F).run(skip=['_test_category', '_test_pickling'])
 
             sage: L1.zero()(Xo)
             0
-            sage: E2(L.zero())
+            sage: E_2(L.zero())
             0
-            sage: (1 + E2)(L.zero())
+            sage: (1 + E_2)(L.zero())
             1
-            sage: (1 + E2)(Xo)
+            sage: (1 + E_2)(Xo)
             1 + E_2(X°) + O^7
 
         Substituting a constant series raises an error::
 
-            sage: E2(1 + Xo)
+            sage: E_2(1 + Xo)
             Traceback (most recent call last):
             ...
             ValueError: can only compose with a positive valuation series
@@ -910,13 +816,7 @@ class Type2CompositionSpeciesElement(LazyHyperoctahedralSpeciesElement):
     r"""
     The type 2 substitution of ordinary lazy species into a lazy
     `r`-species.
-
-    The generating series of a type 2 substitution is in general not
-    the substitution of the generating series, in contrast to the type
-    1 substitution, so it is computed coefficientwise from the
-    molecular expansion.
     """
-
     def __init__(self, left, *args):
         r"""
         Initialize the type 2 substitution of ``args`` into ``left``.
@@ -1330,7 +1230,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
             sage: S = L.SignSpecies()
 
         There are two structures at every degree, so that the
-        exponential generating series is `2 e^{z/2}`::
+        generating series is `2 e^{z/2}`::
 
             sage: S.generating_series().truncate(5)
             2 + X + 1/4*X^2 + 1/24*X^3 + 1/192*X^4
@@ -1435,7 +1335,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
         is generated by the rotation of the cycle and the flip of all
         its orbits, and has order `2n`.
 
-        The exponential generating series is `-log(1-z)/2`.
+        The generating series is `-log(1-z)/2`.
 
         EXAMPLES::
 
@@ -1485,7 +1385,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
         is the cyclic group generated by a negative `n`-cycle, and has
         order `2n`.
 
-        The exponential generating series is `-log(1-z)/2`.
+        The generating series is `-log(1-z)/2`.
 
         EXAMPLES::
 
@@ -1534,8 +1434,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
 
         The cycle index of the homogeneous component of degree `n` is
         `\frac{1}{n} \sum_{k \mid n} \phi(k) (p_k^{n/k}(ζ^0) +
-        p_k^{n/k}(ζ^1))`, and the exponential generating series is
-        `-log(1-z)`.
+        p_k^{n/k}(ζ^1))`, and the generating series is `-log(1-z)`.
 
         EXAMPLES::
 
@@ -1553,10 +1452,10 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
             ....:     for M, c in C[3].monomial_coefficients().items())
             1/3*p_{1,1,1}(ζ^1) + 2/3*p_3(ζ^1) + 1/3*p_{1,1,1}(ζ^0) + 2/3*p_3(ζ^0)
 
-        A set of signed cycles is a signed permutation, so that the type
-        1 substitution of the signed cycles into the species of sets
-        is the species of signed permutations, whose exponential
-        generating series is `1/(1-z)`::
+        A set of signed cycles is a signed permutation, so that the
+        type 1 substitution of the signed cycles into the species of
+        sets is the species of signed permutations, whose generating
+        series is `1/(1-z)`::
 
             sage: E = LazyCombinatorialSpecies(QQ, "Z").Sets()
             sage: P = E(C)
@@ -1572,6 +1471,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
         TESTS::
 
             sage: TestSuite(C).run(skip=['_test_pickling'])
+
         """
         return self.PositiveCycles() + self.NegativeCycles()
 
@@ -1586,7 +1486,7 @@ class LazyHyperoctahedralSpecies(LazyCompletionGradedAlgebra):
         changing the sign of the missing label reverses the cycle.
 
         There are `n (n-2)!` structures on `n` orbits, so that the
-        exponential generating series is `z/2 (1 - log(1-z/2))`.
+        generating series is `z/2 (1 - log(1-z/2))`.
 
         EXAMPLES::
 

@@ -95,12 +95,12 @@ REFERENCES:
 
 AUTHORS:
 
-- Martin Rubey (2025): initial version
+- Martin Rubey (2026): initial version
 """
 
 
 # ****************************************************************************
-#       Copyright (C) 2025 Martin Rubey <martin.rubey@tuwien.ac.at>
+#       Copyright (C) 2026 Martin Rubey <martin.rubey@tuwien.ac.at>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -3379,15 +3379,13 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
                 sage: X_free(X + X^2)
                 X + X^2
 
-            Substituting `2 E_2` into the set-like species `E_2(X^\circ)`
-            of [Henderson2004]_, Example 3.8::
+            Substituting `2 E_2` into the set-like species `E_2(X^\circ)`::
 
                 sage: E2Xo = P(_wreath_young_subgroup(2, [2]))
                 sage: sorted((M.permutation_group()[0].order(), c) for M, c in E2Xo(2*E2))
                 [(16, 1), (32, 2)]
 
-            Weighted species are supported, see Equation (4.8) of
-            [Henderson2004]_ and [Braunsteiner2010]_, Definition 4.1.3::
+            Weighted species are supported::
 
                 sage: R.<q> = QQ[]
                 sage: PoXq = PolynomialSpecies(R, "X")
@@ -3396,10 +3394,10 @@ class PolynomialHyperoctahedralSpecies(CombinatorialFreeModule):
                 sage: E2Xo_q((1+q)*PoXq(SymmetricGroup(1)))
                 (q^2+1)*E_2(X°) + q*X°^2
 
-            Substitution is linear in the outer species and each sort of a
-            multisort species can be substituted with its own species; the
-            two sorts of `E_2(X^\circ, Y^\circ)` below carry `E_2` and
-            `E_3`-structures::
+            Substitution is linear in the outer species.  Each sort of
+            a multisort species is substituted with the corresponding
+            argument.  The two sorts of `E_2(X^\circ, Y^\circ)` below
+            carry `E_2` and `E_3`-structures::
 
                 sage: PXY = PolynomialHyperoctahedralSpecies(QQ, 2, "X, Y")
                 sage: MXY = MolecularHyperoctahedralSpecies(2, "X, Y")
