@@ -125,7 +125,7 @@ def _table_of_marks_from_tomlib(name):
     EXAMPLES::
 
         sage: from sage.groups.perm_gps.permgroup_named import _table_of_marks_from_tomlib
-        sage: _table_of_marks_from_tomlib("S4")
+        sage: _table_of_marks_from_tomlib("S4")                                 # optional - gap_package_tomlib
         TableOfMarks( "S4" )
         sage: _table_of_marks_from_tomlib("S3") is None
         True
