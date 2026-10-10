@@ -371,10 +371,10 @@ class SymmetricGroup(PermutationGroup_symalt):
 
         EXAMPLES::
 
-            sage: SymmetricGroup(4)._table_of_marks()
-            TableOfMarks( "S4" )
             sage: SymmetricGroup(3)._table_of_marks()
             TableOfMarks( Sym( [ 1 .. 3 ] ) )
+            sage: SymmetricGroup(4)._table_of_marks().OrdersTom().sage()
+            [1, 2, 2, 3, 4, 4, 4, 6, 8, 12, 24]
 
         TESTS::
 
@@ -881,10 +881,10 @@ class AlternatingGroup(PermutationGroup_symalt):
 
         EXAMPLES::
 
-            sage: AlternatingGroup(5)._table_of_marks()
-            TableOfMarks( "A5" )
             sage: AlternatingGroup(4)._table_of_marks()
             TableOfMarks( Alt( [ 1 .. 4 ] ) )
+            sage: AlternatingGroup(5)._table_of_marks().OrdersTom().sage()
+            [1, 2, 3, 4, 5, 6, 10, 12, 60]
 
         TESTS::
 
