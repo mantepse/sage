@@ -52,6 +52,8 @@ AUTHORS:
 #                  https://www.gnu.org/licenses/
 # ****************************************************************************
 
+from __future__ import annotations
+
 import math
 from sage.arith.misc import valuation
 
@@ -83,6 +85,11 @@ from . import ell_torsion
 from . import constructor
 from . import formal_group
 from . import weierstrass_morphism as wm
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_field
 
 sqrt = math.sqrt
 exp = math.exp
@@ -475,7 +482,7 @@ class EllipticCurve_generic(WithEqualityById, plane_curve.ProjectivePlaneCurve):
                 return False
         return P.curve() == self
 
-    def __call__(self, *args, **kwds):
+    def __call__(self, *args, **kwds) -> EllipticCurvePoint_field:
         r"""
         EXAMPLES::
 
@@ -724,7 +731,7 @@ class EllipticCurve_generic(WithEqualityById, plane_curve.ProjectivePlaneCurve):
         D = b*b + 4*fx
         return D.is_square()
 
-    def lift_x(self, x, all=False, extend=False):
+    def lift_x(self, x, *, all: bool = False, extend: bool = False) -> EllipticCurvePoint_field | list[EllipticCurvePoint_field]:
         r"""
         Return one or all points with given `x`-coordinate.
 
@@ -1495,7 +1502,7 @@ class EllipticCurve_generic(WithEqualityById, plane_curve.ProjectivePlaneCurve):
             ...
             NotImplementedError: not implemented.
             sage: E = EllipticCurve(QQ, [1,1])
-            sage: E.gens()
+            sage: E.gens()  # needs eclib
             [(0 : 1 : 1)]
         """
         raise NotImplementedError("not implemented.")
@@ -2172,12 +2179,14 @@ class EllipticCurve_generic(WithEqualityById, plane_curve.ProjectivePlaneCurve):
 
         ::
 
+            sage: # needs eclib
             sage: E = EllipticCurve("37a")
             sage: P = E.gens()[0]
             sage: x = P[0]
 
         ::
 
+            sage: # needs eclib
             sage: (35*P)[0]
             -804287518035141565236193151/1063198259901027900600665796
             sage: E._multiple_x_numerator(35, x)
@@ -2187,6 +2196,7 @@ class EllipticCurve_generic(WithEqualityById, plane_curve.ProjectivePlaneCurve):
 
         ::
 
+            sage: # needs eclib
             sage: (36*P)[0]
             54202648602164057575419038802/15402543997324146892198790401
             sage: E._multiple_x_numerator(36, x)
@@ -2294,6 +2304,7 @@ class EllipticCurve_generic(WithEqualityById, plane_curve.ProjectivePlaneCurve):
 
         ::
 
+            sage: # needs eclib
             sage: E = EllipticCurve("43a")
             sage: P = E.gens()[0]
             sage: x = P[0]

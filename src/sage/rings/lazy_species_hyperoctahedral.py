@@ -153,10 +153,7 @@ Then we use Proposition 5.5::
 
 REFERENCES:
 
-.. [Henderson2004] Anthony Henderson.
-   *Representations of wreath products on cohomology of De Concini-Procesi
-   compactifications*.
-   International Mathematics Research Notices 2004, no. 20, 981-1021.
+- [Henderson2004]_
 
 AUTHORS:
 
@@ -520,7 +517,7 @@ class LazyHyperoctahedralSpeciesElement(LazyCompletionGradedAlgebraElement):
             Z° + {((1,2)(3,4),)} + O^8
 
         Substitution is compatible with passing to the cycle index
-        series and the generating series, see [Braunsteiner2010]_,
+        series and the generating series, see [Braunsteiner2015]_,
         Theorem 4.1.9 and [Henderson2004]_, Equation (1.5), Corollary
         4.7 and Corollary 4.10.  For example::
 

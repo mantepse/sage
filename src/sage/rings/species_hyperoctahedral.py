@@ -88,10 +88,7 @@ each sort decomposes into two molecular factors::
 
 REFERENCES:
 
-.. [Henderson2004] Anthony Henderson.
-   *Representations of wreath products on cohomology of De Concini-Procesi
-   compactifications*.
-   International Mathematics Research Notices 2004, no. 20, 981-1021.
+- [Henderson2004]_
 
 AUTHORS:
 
@@ -1951,7 +1948,7 @@ class MolecularHyperoctahedralSpecies(IndexedFreeAbelianMonoid):
 
             This is the average over the conjugacy classes of the
             permutation group of ``self`` of the power sums indexed by
-            the coloured cycle type, see Henderson [Henderson2004].
+            the coloured cycle type, see Henderson [Henderson2004]_.
 
             For unisort species, the result is an element of the power
             sum basis of the hyperoctahedral symmetric functions of

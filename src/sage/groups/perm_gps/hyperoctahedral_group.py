@@ -61,10 +61,7 @@ permutation group returned by :func:`_wreath_group`, via
 
 REFERENCES:
 
-.. [Henderson2004] Anthony Henderson.
-   *Representations of wreath products on cohomology of De Concini-Procesi
-   compactifications*.
-   International Mathematics Research Notices 2004, no. 20, 981-1021.
+- [Henderson2004]_
 
 AUTHORS:
 
