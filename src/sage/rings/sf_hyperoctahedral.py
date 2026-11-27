@@ -24,7 +24,7 @@ identified with the tensor product `\Lambda(1)^{\otimes r}` of `r`
 copies of the ordinary symmetric function algebra, the `j`-th tensor
 factor carrying the power sums `p_i(\zeta^j)`.
 
-Macdonald [Macdonald1995]_ (Appendix B) treats the same algebra with
+Macdonald [Mac1995]_ (Appendix B) treats the same algebra with
 the colours read either as conjugacy classes `\zeta^j` of the cyclic
 group `C_r` or as its irreducible characters `\chi^j`, the two
 conventions being related by the discrete Fourier transform (his
@@ -130,14 +130,9 @@ The plethysms are associative whenever both sides are defined::
 
 REFERENCES:
 
-.. [Henderson2004] Anthony Henderson.
-   *Representations of wreath products on cohomology of De Concini-Procesi
-   compactifications*.
-   International Mathematics Research Notices 2004, no. 20, 981-1021.
+- [Henderson2004]_
 
-.. [Macdonald1995] I. G. Macdonald.
-   *Symmetric functions and Hall polynomials*. 2nd ed., Oxford University
-   Press, 1995, Appendix B.
+- [Mac1995]_, Appendix B
 
 AUTHORS:
 
